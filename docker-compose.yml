@@ -1,0 +1,22 @@
+services:
+  plex-playlist-importer:
+    build: .
+    container_name: plex-playlist-importer
+    restart: unless-stopped
+    ports:
+      - "8765:8000"
+    volumes:
+      # Config persistence
+      - ./config:/config
+      # Mount your playlists folder (adjust this path!)
+      - /mnt/data/media/music/Spotify Playlists:/playlists:ro
+    environment:
+      - TZ=Europe/Moscow
+    # If Plex is in Docker, they need to be on the same network
+    # networks:
+    #   - plex_network
+
+# Uncomment if Plex is in Docker
+# networks:
+#   plex_network:
+#     external: true
