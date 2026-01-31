@@ -1,18 +1,21 @@
 <template>
   <div class="home">
-    <!-- Stats -->
-    <div class="stats">
-      <div class="stat-item">
-        <div class="stat-value">{{ playlists.length }}</div>
-        <div class="stat-label">Playlists Found</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value">{{ totalTracks }}</div>
-        <div class="stat-label">Total Tracks</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value">{{ selectedPlaylists.length }}</div>
-        <div class="stat-label">Selected</div>
+    <!-- Hero Section with Icon -->
+    <div class="hero-section">
+      <img src="/playlist-icon.png" alt="Playlist Icon" class="hero-icon" />
+      <div class="stats">
+        <div class="stat-item">
+          <div class="stat-value">{{ playlists.length }}</div>
+          <div class="stat-label">Playlists Found</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{{ totalTracks }}</div>
+          <div class="stat-label">Total Tracks</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{{ selectedPlaylists.length }}</div>
+          <div class="stat-label">Selected</div>
+        </div>
       </div>
     </div>
     
@@ -75,7 +78,7 @@
       </div>
       
       <div v-else-if="!filteredPlaylists.length" class="empty-state">
-        <div class="empty-state-icon">📂</div>
+        <img src="/playlist-icon.png" alt="No playlists" class="empty-state-img" />
         <p v-if="searchQuery">No playlists match "{{ searchQuery }}"</p>
         <p v-else>No playlists found. Check your settings.</p>
         <router-link to="/settings" class="btn btn-secondary" style="margin-top: 16px;">
@@ -368,3 +371,86 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+/* Hero Section */
+.hero-section {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin-bottom: 24px;
+}
+
+.hero-icon {
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  filter: drop-shadow(0 8px 24px rgba(229, 160, 13, 0.3));
+  animation: float 4s ease-in-out infinite, glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+
+@keyframes glow {
+  0% {
+    filter: drop-shadow(0 8px 24px rgba(229, 160, 13, 0.3));
+  }
+  100% {
+    filter: drop-shadow(0 8px 32px rgba(229, 160, 13, 0.6));
+  }
+}
+
+.hero-section .stats {
+  flex: 1;
+  display: flex;
+  gap: 24px;
+  margin-bottom: 0;
+}
+
+/* Empty State */
+.empty-state-img {
+  width: 140px;
+  height: 140px;
+  margin-bottom: 20px;
+  opacity: 0.6;
+  filter: grayscale(30%);
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hero-section {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .hero-icon {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .hero-section .stats {
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+}
+</style>
