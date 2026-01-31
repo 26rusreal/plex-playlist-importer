@@ -436,8 +436,16 @@ if os.path.exists(frontend_path):
     def serve_frontend():
         return FileResponse(f"{frontend_path}/index.html")
     
+    @app.get("/playlist-icon.png")
+    def serve_icon():
+        return FileResponse(f"{frontend_path}/playlist-icon.png")
+    
     @app.get("/{path:path}")
     def serve_frontend_routes(path: str):
         # Serve index.html for all non-API routes (SPA routing)
         if not path.startswith("api/"):
+            # Check if it's a static file that exists
+            static_path = f"{frontend_path}/{path}"
+            if os.path.isfile(static_path):
+                return FileResponse(static_path)
             return FileResponse(f"{frontend_path}/index.html")
