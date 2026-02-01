@@ -111,7 +111,9 @@ body {
   height: 24px;
   margin-right: 8px;
   flex-shrink: 0;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   vertical-align: middle;
   color: inherit;
   fill: currentColor;
@@ -603,11 +605,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+  line-height: 0;
 }
 
-.search-icon svg {
+.search-icon .inline-icon {
   width: 18px;
   height: 18px;
+  margin-right: 0;
 }
 
 /* Responsive */
