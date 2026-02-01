@@ -3,7 +3,7 @@
     <header class="header">
       <div class="container header-content">
         <router-link to="/" class="logo">
-          <img src="/playlist-icon.png" alt="Logo" class="logo-img" />
+          <img src="/playlist-icon.svg" alt="Logo" class="logo-img" />
           <span class="logo-text">Playlist Importer</span>
         </router-link>
         <nav class="nav">
