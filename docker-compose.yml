@@ -12,6 +12,9 @@ services:
       - /mnt/data/media/music/Spotify Playlists:/playlists:ro
     environment:
       - TZ=Europe/Moscow
+      - SPOTIFY_SCRAPER_URL=http://host.docker.internal:3020
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # If Plex is in Docker, they need to be on the same network
     # networks:
     #   - plex_network

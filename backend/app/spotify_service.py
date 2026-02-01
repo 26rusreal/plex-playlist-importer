@@ -1,21 +1,24 @@
 """
-Spotify Playlist Service - через официальный Spotify API
-Требует Client ID и Client Secret из Spotify Developer Dashboard
+Spotify Playlist Service - через внешний scraper или официальный API
 """
 from typing import Optional, List
 from urllib.parse import urlparse
 import logging
 import os
+import requests
 from dataclasses import dataclass
 
 try:
     import spotipy
     from spotipy.oauth2 import SpotifyClientCredentials
-    SPOTIFY_AVAILABLE = True
+    SPOTIPY_AVAILABLE = True
 except ImportError:
-    SPOTIFY_AVAILABLE = False
+    SPOTIPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# Scraper service URL (spotify-to-plex scraper)
+SCRAPER_URL = os.environ.get('SPOTIFY_SCRAPER_URL', 'http://localhost:3020')
 
 
 @dataclass
@@ -40,11 +43,80 @@ class SpotifyPlaylist:
     total_tracks: int = 0
 
 
+class SpotifyScraperService:
+    """Сервис для работы со Spotify через внешний scraper (обход гео-блокировок)"""
+    
+    def __init__(self, scraper_url: str = None):
+        self.scraper_url = scraper_url or SCRAPER_URL
+        logger.info(f"SpotifyScraperService initialized with {self.scraper_url}")
+    
+    def get_playlist(self, url: str) -> SpotifyPlaylist:
+        """Получение плейлиста через scraper сервис"""
+        if not SpotifyService.is_valid_url(url):
+            raise ValueError("Невалидный Spotify URL")
+        
+        try:
+            logger.info(f"Fetching playlist via scraper: {url}")
+            
+            response = requests.post(
+                f"{self.scraper_url}/playlist",
+                json={"url": url, "include_album_data": False},
+                timeout=120
+            )
+            
+            if response.status_code != 200:
+                raise ValueError(f"Scraper error: {response.status_code}")
+            
+            data = response.json()
+            
+            tracks = []
+            for track_data in data.get('tracks', []):
+                artists = track_data.get('artists', [])
+                artist_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
+                
+                track = SpotifyTrack(
+                    title=track_data.get('name', 'Unknown'),
+                    artist=artist_name,
+                    album=track_data.get('album', {}).get('name') if isinstance(track_data.get('album'), dict) else None,
+                    duration_ms=track_data.get('duration_ms'),
+                    uri=track_data.get('uri')
+                )
+                tracks.append(track)
+            
+            images = data.get('images', [])
+            image_url = None
+            for img in images:
+                if isinstance(img, dict) and img.get('height', 0) >= 300:
+                    image_url = img.get('url')
+                    break
+            if not image_url and images:
+                image_url = images[0].get('url') if isinstance(images[0], dict) else None
+            
+            playlist = SpotifyPlaylist(
+                name=data.get('name', 'Unknown Playlist'),
+                description=data.get('description'),
+                owner=data.get('owner', {}).get('name', 'Unknown') if isinstance(data.get('owner'), dict) else 'Unknown',
+                url=url,
+                tracks=tracks,
+                image_url=image_url,
+                total_tracks=data.get('track_count', len(tracks))
+            )
+            
+            logger.info(f"Successfully fetched playlist: {playlist.name} ({len(tracks)} tracks)")
+            return playlist
+            
+        except requests.exceptions.Timeout:
+            raise ValueError("Scraper timeout - плейлист слишком большой или сервис недоступен")
+        except Exception as e:
+            logger.error(f"Scraper error: {e}")
+            raise ValueError(f"Ошибка scraper: {str(e)}")
+
+
 class SpotifyService:
-    """Сервис для работы со Spotify API"""
+    """Сервис для работы со Spotify API (может быть заблокирован в некоторых странах)"""
     
     def __init__(self, client_id: str = None, client_secret: str = None):
-        if not SPOTIFY_AVAILABLE:
+        if not SPOTIPY_AVAILABLE:
             raise ImportError("spotipy не установлен")
         
         self.client_id = client_id or os.environ.get('SPOTIFY_CLIENT_ID', '')
@@ -159,13 +231,24 @@ class SpotifyService:
             raise ValueError(f"Ошибка при получении плейлиста: {str(e)}")
 
 
+def is_scraper_available() -> bool:
+    """Проверка доступности Spotify scraper сервиса"""
+    try:
+        response = requests.get(f"{SCRAPER_URL}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+
 def is_spotify_available() -> bool:
-    """Проверка доступности Spotify функционала"""
-    return SPOTIFY_AVAILABLE
+    """Проверка доступности Spotify функционала (scraper или API)"""
+    return is_scraper_available() or SPOTIPY_AVAILABLE
 
 
 def is_spotify_configured() -> bool:
-    """Проверка настроены ли Spotify credentials"""
+    """Проверка настроены ли Spotify (scraper доступен или API credentials)"""
+    if is_scraper_available():
+        return True
     from .config import load_settings
     settings = load_settings()
     client_id = settings.get('spotify_client_id', '')
@@ -173,8 +256,13 @@ def is_spotify_configured() -> bool:
     return bool(client_id and client_secret)
 
 
-def get_spotify_service() -> SpotifyService:
-    """Получение настроенного Spotify сервиса"""
+def get_spotify_service():
+    """Получение Spotify сервиса (предпочитаем scraper для обхода гео-блокировок)"""
+    # Сначала пробуем scraper (обходит гео-блокировки)
+    if is_scraper_available():
+        return SpotifyScraperService()
+    
+    # Fallback на прямой API
     from .config import load_settings
     settings = load_settings()
     return SpotifyService(

@@ -12,9 +12,15 @@ class Settings(BaseSettings):
     plex_token: str = Field(default="")
     music_library_name: str = Field(default="Music")
     playlists_path: str = Field(default="/playlists")
+    # Spotify settings
+    spotify_client_id: str = Field(default="")
+    spotify_client_secret: str = Field(default="")
+    # OAuth
+    client_id: str = Field(default="")
     
     class Config:
         env_prefix = "PLEX_"
+        extra = "ignore"  # Ignore unknown fields
 
 
 def load_settings() -> dict:
