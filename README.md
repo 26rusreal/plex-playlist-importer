@@ -1,83 +1,159 @@
 # Plex Playlist Importer
 
-Web application to import M3U playlists into Plex Media Server.
+A modern web application to import playlists into Plex Media Server from M3U files and Spotify.
+
+![Docker Pulls](https://img.shields.io/docker/pulls/26rusreal/plex-playlist-importer)
+![License](https://img.shields.io/github/license/26rusreal/plex-playlist-importer)
 
 ## Features
 
-- Scan folders for M3U/M3U8 playlist files
-- Preview track matching before import
-- Smart track matching (filename, title+artist)
-- Batch import multiple playlists
-- Modern dark UI (Plex-style)
-- Docker deployment
+- **M3U Import** - Scan folders for M3U/M3U8 playlist files
+- **Spotify Import** - Import playlists directly from Spotify URLs (no Spotify account needed)
+- **Smart Matching** - Intelligent track matching using title, artist, and filename
+- **Progress Visualization** - Real-time import progress with track-by-track status
+- **Plex OAuth** - Easy sign-in with your Plex account
+- **Batch Import** - Import multiple playlists at once
+- **Modern UI** - Dark theme matching Plex aesthetic
+- **Docker Ready** - Easy deployment with Docker Compose
 
 ## Quick Start
 
-1. **Configure docker-compose.yml:**
-   
-   Edit the volume mount to point to your playlists folder:
-   ```yaml
-   volumes:
-     - /path/to/your/playlists:/playlists:ro
-   ```
-
-2. **Start the container:**
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Open web UI:**
-   
-   Go to http://localhost:8765
-
-4. **Configure Plex connection:**
-   - Plex URL (e.g., `http://your-plex-ip:32400`)
-   - Plex Token (see below how to get it)
-   - Music Library name
-
-## Getting Plex Token
-
-1. Open Plex Web App and sign in
-2. Browse to any media item
-3. Click the three dots (...) menu and select "Get Info"
-4. Click "View XML" at the bottom
-5. In the URL, find the `X-Plex-Token=` parameter
-6. Copy the token value
-
-## Configuration
-
-Settings are stored in `./config/settings.json` and persist across container restarts.
-
-### Environment Variables
-
-- `TZ` - Timezone (default: UTC)
-
-### Docker Network
-
-If your Plex server runs in Docker, make sure both containers are on the same network:
+### Using Docker Compose (Recommended)
 
 ```yaml
 services:
   plex-playlist-importer:
-    networks:
-      - plex_network
-
-networks:
-  plex_network:
-    external: true
+    image: ghcr.io/26rusreal/plex-playlist-importer:latest
+    container_name: plex-playlist-importer
+    restart: unless-stopped
+    ports:
+      - "8765:8000"
+    volumes:
+      - ./config:/config
+      - /path/to/your/playlists:/playlists:ro
+    environment:
+      - TZ=Europe/Moscow
 ```
+
+```bash
+docker compose up -d
+```
+
+Open http://localhost:8765
+
+### Using Docker Run
+
+```bash
+docker run -d \
+  --name plex-playlist-importer \
+  -p 8765:8000 \
+  -v $(pwd)/config:/config \
+  -v /path/to/playlists:/playlists:ro \
+  ghcr.io/26rusreal/plex-playlist-importer:latest
+```
+
+## Configuration
+
+### 1. Connect to Plex
+
+**Option A: OAuth (Recommended)**
+1. Go to Settings
+2. Click "Sign in with Plex"
+3. Authorize in the popup window
+4. Select your server
+
+**Option B: Manual Token**
+1. Open Plex Web App → any media item → (...) → Get Info → View XML
+2. Copy `X-Plex-Token` from the URL
+3. Enter in Settings → Manual Token Entry
+
+### 2. Select Music Library
+
+After connecting, select your music library from the dropdown.
+
+### 3. Spotify Integration (Optional)
+
+For Spotify playlist import, the app can use:
+
+**Option A: External Scraper (Recommended for geo-blocked regions)**
+
+If you have [spotify-to-plex](https://github.com/jjdenhertog/spotify-to-plex) running, the app will automatically detect and use its scraper service.
+
+Add to docker-compose.yml:
+```yaml
+environment:
+  - SPOTIFY_SCRAPER_URL=http://host.docker.internal:3020
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+**Option B: Spotify API**
+
+1. Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Copy Client ID and Client Secret
+3. Enter in Settings → Spotify Integration
+
+## Usage
+
+### Import M3U Playlists
+
+1. Mount your playlists folder to `/playlists` in the container
+2. Playlists will appear on the home page
+3. Click "Preview" to see track matching
+4. Click "Import" to create the playlist in Plex
+
+### Import from Spotify
+
+1. Copy any public Spotify playlist URL
+2. Paste into "Import from Spotify" section
+3. Click "Preview" to see matched tracks
+4. Click "Import to Plex"
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TZ` | Timezone | `UTC` |
+| `SPOTIFY_SCRAPER_URL` | External Spotify scraper URL | `http://localhost:3020` |
+
+## API Endpoints
+
+### Settings
+- `GET /api/settings` - Get current settings
+- `POST /api/settings` - Update settings
+- `POST /api/test-connection` - Test Plex connection
+- `GET /api/libraries` - Get music libraries
+
+### Plex Auth
+- `POST /api/auth/start` - Start OAuth flow
+- `GET /api/auth/check/{code}` - Check OAuth status
+- `POST /api/auth/save` - Save token
+- `GET /api/auth/servers` - Get user's servers
+- `POST /api/auth/logout` - Logout
+
+### Playlists
+- `GET /api/playlists` - List M3U playlists
+- `GET /api/playlists/preview` - Preview with matching
+- `POST /api/playlists/import` - Import single playlist
+- `POST /api/playlists/import-batch` - Batch import
+
+### Spotify
+- `GET /api/spotify/status` - Check Spotify availability
+- `POST /api/spotify/preview` - Preview Spotify playlist
+- `POST /api/spotify/import` - Import Spotify playlist
+- `POST /api/spotify/credentials` - Save API credentials
 
 ## Development
 
-### Backend (FastAPI)
+### Backend (FastAPI + Python)
 
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend (Vue.js)
+### Frontend (Vue.js + Vite)
 
 ```bash
 cd frontend
@@ -85,17 +161,17 @@ npm install
 npm run dev
 ```
 
-## API Endpoints
+## Tech Stack
 
-- `GET /api/settings` - Get current settings
-- `POST /api/settings` - Update settings
-- `POST /api/test-connection` - Test Plex connection
-- `GET /api/libraries` - Get Plex music libraries
-- `GET /api/playlists` - List all M3U playlists
-- `GET /api/playlists/preview?path=...` - Preview playlist with matching
-- `POST /api/playlists/import` - Import single playlist
-- `POST /api/playlists/import-batch` - Import multiple playlists
+- **Backend**: FastAPI, PlexAPI, Spotipy
+- **Frontend**: Vue.js 3, Vite, Axios
+- **Container**: Docker, multi-stage build
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Credits
+
+- [PlexAPI](https://github.com/pkkid/python-plexapi) - Python Plex client
+- [spotify-to-plex](https://github.com/jjdenhertog/spotify-to-plex) - Spotify scraper service
