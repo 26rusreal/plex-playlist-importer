@@ -28,7 +28,7 @@
           Sign in with your Plex account to automatically configure the connection.
         </p>
         <button class="btn btn-plex" @click="startAuth" :disabled="authInProgress">
-          <svg class="inline-icon inline-icon--sm icon-plex" viewBox="0 0 24 24" aria-hidden="true">
+          <svg class="plex-icon" viewBox="0 0 24 24" width="20" height="20">
             <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
           </svg>
           {{ authInProgress ? 'Waiting for authorization...' : 'Sign in with Plex' }}
@@ -137,7 +137,7 @@
     <div class="card spotify-settings">
       <div class="card-header">
         <h2 class="card-title">
-          <svg class="inline-icon icon-spotify" viewBox="0 0 24 24" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
           </svg>
           Spotify Integration
@@ -182,6 +182,128 @@
       <button class="btn btn-spotify" @click="saveSpotifyCredentials" :disabled="savingSpotify || !spotifyClientId || !spotifyClientSecret">
         <span v-if="savingSpotify" class="spinner"></span>
         Save Spotify Credentials
+      </button>
+    </div>
+    
+    <!-- SLSKD Settings -->
+    <div class="card slskd-settings">
+      <div class="card-header">
+        <h2 class="card-title">
+          <span style="font-size: 20px; margin-right: 8px;">🎵</span>
+          SLSKD Integration (Soulseek)
+        </h2>
+        <div class="status-indicator">
+          <span class="status-dot" :class="slskdAvailable ? 'connected' : 'disconnected'"></span>
+          <span>{{ slskdAvailable ? (slskdSettings.enabled ? 'Enabled' : 'Disabled') : 'Not configured' }}</span>
+        </div>
+      </div>
+      
+      <p class="slskd-description">
+        Download missing tracks from Soulseek P2P network via SLSKD daemon.
+        <a href="https://github.com/slskd/slskd" target="_blank" rel="noopener">
+          Learn more about SLSKD →
+        </a>
+      </p>
+      
+      <div v-if="!slskdAvailable" class="alert alert-warning" style="margin-bottom: 16px;">
+        SLSKD API key not configured. Set SLSKD_API_KEY environment variable.
+      </div>
+      
+      <div v-if="slskdMessage" :class="['alert', slskdMessageType === 'success' ? 'alert-success' : 'alert-error']" style="margin-bottom: 16px;">
+        {{ slskdMessage }}
+      </div>
+      
+      <div class="form-group">
+        <label class="checkbox">
+          <input type="checkbox" v-model="slskdSettings.enabled" :disabled="!slskdAvailable">
+          <span>Enable SLSKD Integration</span>
+        </label>
+      </div>
+      
+      <template v-if="slskdSettings.enabled && slskdAvailable">
+        <div class="form-group">
+          <label class="form-label">SLSKD URL</label>
+          <div style="display: flex; gap: 12px;">
+            <input 
+              v-model="slskdSettings.url" 
+              type="text" 
+              class="form-input"
+              placeholder="http://192.168.1.100:5030"
+              style="flex: 1;"
+            >
+            <button class="btn btn-secondary" @click="testSlskdConnection" :disabled="slskdTesting || !slskdSettings.url">
+              <span v-if="slskdTesting" class="spinner"></span>
+              Test
+            </button>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Allowed File Extensions</label>
+          <div class="extension-chips">
+            <span 
+              v-for="ext in slskdSettings.allowed_extensions" 
+              :key="ext" 
+              class="extension-chip"
+            >
+              {{ ext }}
+              <button class="chip-remove" @click="removeExtension(ext)">&times;</button>
+            </span>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <input 
+              v-model="newExtension" 
+              type="text" 
+              class="form-input"
+              placeholder="Add extension (e.g., flac)"
+              style="flex: 1;"
+              @keyup.enter="addExtension"
+            >
+            <button class="btn btn-secondary btn-sm" @click="addExtension" :disabled="!newExtension.trim()">
+              Add
+            </button>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          <div class="form-group" style="flex: 1; min-width: 150px;">
+            <label class="form-label">Search Timeout (sec)</label>
+            <input 
+              v-model.number="slskdSettings.search_timeout" 
+              type="number" 
+              class="form-input"
+              min="5"
+              max="60"
+            >
+          </div>
+          
+          <div class="form-group" style="flex: 1; min-width: 150px;">
+            <label class="form-label">Max Results</label>
+            <input 
+              v-model.number="slskdSettings.max_results" 
+              type="number" 
+              class="form-input"
+              min="10"
+              max="200"
+            >
+          </div>
+          
+          <div class="form-group" style="flex: 1; min-width: 150px;">
+            <label class="form-label">Download Attempts</label>
+            <input 
+              v-model.number="slskdSettings.download_attempts" 
+              type="number" 
+              class="form-input"
+              min="1"
+              max="10"
+            >
+          </div>
+        </div>
+      </template>
+      
+      <button class="btn btn-slskd" @click="saveSlskdSettings" :disabled="savingSlskd">
+        <span v-if="savingSlskd" class="spinner"></span>
+        Save SLSKD Settings
       </button>
     </div>
     
@@ -251,13 +373,29 @@ export default {
       spotifyConfigured: false,
       savingSpotify: false,
       spotifyMessage: '',
-      spotifyMessageType: ''
+      spotifyMessageType: '',
+      // SLSKD
+      slskdAvailable: false,
+      slskdSettings: {
+        enabled: false,
+        url: 'http://localhost:5030',
+        allowed_extensions: ['flac', 'mp3', 'wav', 'ogg', 'm4a'],
+        search_timeout: 10,
+        max_results: 50,
+        download_attempts: 3
+      },
+      slskdTesting: false,
+      savingSlskd: false,
+      slskdMessage: '',
+      slskdMessageType: '',
+      newExtension: ''
     }
   },
   async mounted() {
     await this.loadSettings()
     await this.loadServers()
     await this.loadSpotifyStatus()
+    await this.loadSlskdStatus()
   },
   beforeUnmount() {
     this.cancelAuth()
@@ -532,6 +670,66 @@ export default {
       }
       
       this.savingSpotify = false
+    },
+    
+    // ===== SLSKD Methods =====
+    
+    async loadSlskdStatus() {
+      try {
+        const { data: status } = await axios.get('/api/slskd/status')
+        this.slskdAvailable = status.available
+        
+        const { data: settings } = await axios.get('/api/slskd/settings')
+        this.slskdSettings = settings
+      } catch (error) {
+        console.error('Failed to load SLSKD status:', error)
+      }
+    },
+    
+    async testSlskdConnection() {
+      this.slskdTesting = true
+      this.slskdMessage = ''
+      
+      try {
+        const { data } = await axios.post('/api/slskd/test', {
+          url: this.slskdSettings.url
+        })
+        this.slskdMessage = data.message || 'Connection successful!'
+        this.slskdMessageType = 'success'
+      } catch (error) {
+        this.slskdMessage = error.response?.data?.detail || 'Connection failed'
+        this.slskdMessageType = 'error'
+      }
+      
+      this.slskdTesting = false
+    },
+    
+    async saveSlskdSettings() {
+      this.savingSlskd = true
+      this.slskdMessage = ''
+      
+      try {
+        await axios.post('/api/slskd/settings', this.slskdSettings)
+        this.slskdMessage = 'SLSKD settings saved!'
+        this.slskdMessageType = 'success'
+      } catch (error) {
+        this.slskdMessage = error.response?.data?.detail || 'Failed to save'
+        this.slskdMessageType = 'error'
+      }
+      
+      this.savingSlskd = false
+    },
+    
+    addExtension() {
+      const ext = this.newExtension.trim().toLowerCase().replace(/^\./, '')
+      if (ext && !this.slskdSettings.allowed_extensions.includes(ext)) {
+        this.slskdSettings.allowed_extensions.push(ext)
+        this.newExtension = ''
+      }
+    },
+    
+    removeExtension(ext) {
+      this.slskdSettings.allowed_extensions = this.slskdSettings.allowed_extensions.filter(e => e !== ext)
     }
   }
 }
@@ -596,6 +794,10 @@ export default {
 
 .btn-plex:hover:not(:disabled) {
   background: #f5b82e;
+}
+
+.plex-icon {
+  margin-right: 8px;
 }
 
 .auth-waiting {
@@ -724,5 +926,73 @@ details.card[open] > summary::after {
 
 .btn-spotify:hover:not(:disabled) {
   background: #1ed760;
+}
+
+/* SLSKD settings */
+.slskd-settings {
+  background: linear-gradient(135deg, rgba(100, 149, 237, 0.08) 0%, rgba(0, 0, 0, 0) 50%);
+  border: 1px solid rgba(100, 149, 237, 0.2);
+}
+
+.slskd-description {
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.slskd-description a {
+  color: #6495ED;
+  text-decoration: none;
+}
+
+.slskd-description a:hover {
+  text-decoration: underline;
+}
+
+.btn-slskd {
+  background: #6495ED;
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-slskd:hover:not(:disabled) {
+  background: #7ba3f0;
+}
+
+.extension-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.extension-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font-size: 13px;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+}
+
+.chip-remove:hover {
+  color: var(--error);
+}
+
+.alert-warning {
+  background: rgba(229, 160, 13, 0.1);
+  border: 1px solid rgba(229, 160, 13, 0.3);
+  color: #e5a00d;
 }
 </style>

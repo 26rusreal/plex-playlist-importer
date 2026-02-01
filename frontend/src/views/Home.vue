@@ -2,7 +2,7 @@
   <div class="home">
     <!-- Hero Section with Icon -->
     <div class="hero-section">
-      <img src="/playlist-icon.svg" alt="Playlist Icon" class="hero-icon" />
+      <img src="/playlist-icon.png" alt="Playlist Icon" class="hero-icon" />
       <div class="stats">
         <div class="stat-item">
           <div class="stat-value">{{ playlists.length }}</div>
@@ -23,7 +23,7 @@
     <div class="card spotify-card">
       <div class="card-header">
         <h2 class="card-title">
-          <svg class="inline-icon icon-spotify" viewBox="0 0 24 24" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
           </svg>
           Import from Spotify
@@ -91,14 +91,7 @@
       
       <!-- Search -->
       <div class="search-box">
-        <span class="search-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path
-              fill="currentColor"
-              d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.71.71l.27.28v.79L20 20.5 21.5 19zM10 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"
-            />
-          </svg>
-        </span>
+        <span class="search-icon">🔍</span>
         <input 
           v-model="searchQuery" 
           type="text" 
@@ -127,7 +120,7 @@
       </div>
       
       <div v-else-if="!filteredPlaylists.length" class="empty-state">
-        <img src="/playlist-icon.svg" alt="No playlists" class="empty-state-img" />
+        <img src="/playlist-icon.png" alt="No playlists" class="empty-state-img" />
         <p v-if="searchQuery">No playlists match "{{ searchQuery }}"</p>
         <p v-else>No playlists found. Check your settings.</p>
         <router-link to="/settings" class="btn btn-secondary" style="margin-top: 16px;">
@@ -214,9 +207,18 @@
                   <span v-if="track.matched" class="badge badge-success">
                     {{ track.match_type }}
                   </span>
-                  <span v-else class="badge badge-error">
-                    not found
-                  </span>
+                  <template v-else>
+                    <span class="badge badge-error">not found</span>
+                    <button 
+                      v-if="slskdEnabled" 
+                      class="btn btn-xs btn-slskd" 
+                      @click="searchSlskd(track)"
+                      :disabled="track.slskdSearching"
+                    >
+                      <span v-if="track.slskdSearching" class="spinner-xs"></span>
+                      {{ track.slskdSearching ? '' : '🎵' }}
+                    </button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -236,7 +238,7 @@
       <div class="modal">
         <div class="modal-header">
           <h3 class="modal-title">
-            <svg class="inline-icon inline-icon--sm icon-spotify" viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
             </svg>
             {{ spotifyPreview.name }}
@@ -340,6 +342,74 @@
         </div>
       </div>
     </div>
+    
+    <!-- SLSKD Search Modal -->
+    <div v-if="slskdModal" class="modal-overlay" @click.self="slskdModal = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">
+            🎵 Soulseek Search
+          </h3>
+          <button class="modal-close" @click="slskdModal = null">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="slskd-search-info">
+            <strong>{{ slskdModal.track?.artist }} - {{ slskdModal.track?.title }}</strong>
+          </div>
+          
+          <div v-if="slskdModal.loading" class="empty-state">
+            <div class="spinner" style="width: 40px; height: 40px; margin: 0 auto;"></div>
+            <p style="margin-top: 16px;">Searching Soulseek network...</p>
+          </div>
+          
+          <div v-else-if="slskdModal.error" class="alert alert-error">
+            {{ slskdModal.error }}
+          </div>
+          
+          <div v-else-if="slskdModal.results && slskdModal.results.length > 0">
+            <div style="margin-bottom: 12px; color: var(--text-secondary);">
+              Found {{ slskdModal.results.length }} results
+            </div>
+            
+            <div class="slskd-results">
+              <div 
+                v-for="(file, index) in slskdModal.results.slice(0, 20)" 
+                :key="index"
+                class="slskd-file"
+                :class="{ selected: slskdModal.selectedFile === index }"
+                @click="slskdModal.selectedFile = index"
+              >
+                <div class="slskd-file-info">
+                  <div class="slskd-filename">{{ getFilename(file.filename) }}</div>
+                  <div class="slskd-meta">
+                    <span class="slskd-ext">{{ file.extension.toUpperCase() }}</span>
+                    <span v-if="file.bit_rate">{{ file.bit_rate }} kbps</span>
+                    <span>{{ formatSize(file.size) }}</span>
+                    <span class="slskd-user">@{{ file.username }}</span>
+                  </div>
+                </div>
+                <div v-if="slskdModal.selectedFile === index" class="slskd-check">✓</div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="empty-state">
+            <p>No results found</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="slskdModal = null">Cancel</button>
+          <button 
+            class="btn btn-slskd" 
+            @click="downloadSlskdFile" 
+            :disabled="slskdModal.selectedFile === null || slskdModal.downloading"
+          >
+            <span v-if="slskdModal.downloading" class="spinner"></span>
+            {{ slskdModal.downloading ? 'Queueing...' : 'Download Selected' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -370,7 +440,10 @@ export default {
       spotifyPreview: null,
       spotifyOverwrite: false,
       spotifyImporting: false,
-      spotifyConfigured: true // assume configured until check
+      spotifyConfigured: true, // assume configured until check
+      // SLSKD
+      slskdEnabled: false,
+      slskdModal: null
     }
   },
   computed: {
@@ -404,6 +477,7 @@ export default {
   mounted() {
     this.loadPlaylists()
     this.checkSpotifyStatus()
+    this.checkSlskdStatus()
   },
   methods: {
     async checkSpotifyStatus() {
@@ -559,6 +633,92 @@ export default {
       }
       
       this.spotifyImporting = false
+    },
+    
+    // SLSKD methods
+    async checkSlskdStatus() {
+      try {
+        const { data } = await axios.get('/api/slskd/status')
+        this.slskdEnabled = data.enabled
+      } catch (error) {
+        this.slskdEnabled = false
+      }
+    },
+    
+    async searchSlskd(track) {
+      // Mark track as searching
+      track.slskdSearching = true
+      
+      // Open modal
+      this.slskdModal = {
+        track: track,
+        loading: true,
+        error: null,
+        results: [],
+        selectedFile: null,
+        downloading: false
+      }
+      
+      try {
+        const { data } = await axios.post('/api/slskd/search', {
+          query: `${track.artist || ''} ${track.title || ''}`.trim(),
+          artist: track.artist,
+          title: track.title
+        })
+        
+        this.slskdModal.results = data.files || []
+        this.slskdModal.loading = false
+        
+        // Auto-select first result
+        if (this.slskdModal.results.length > 0) {
+          this.slskdModal.selectedFile = 0
+        }
+      } catch (error) {
+        this.slskdModal.loading = false
+        this.slskdModal.error = error.response?.data?.detail || 'Search failed'
+      }
+      
+      track.slskdSearching = false
+    },
+    
+    async downloadSlskdFile() {
+      if (!this.slskdModal || this.slskdModal.selectedFile === null) return
+      
+      const file = this.slskdModal.results[this.slskdModal.selectedFile]
+      if (!file) return
+      
+      this.slskdModal.downloading = true
+      
+      try {
+        await axios.post('/api/slskd/queue', {
+          files: [{
+            username: file.username,
+            filename: file.filename,
+            size: file.size
+          }]
+        })
+        
+        // Success - close modal
+        this.slskdModal = null
+        this.successMessage = `Queued download: ${this.getFilename(file.filename)}`
+        
+        setTimeout(() => {
+          this.successMessage = ''
+        }, 5000)
+      } catch (error) {
+        this.slskdModal.downloading = false
+        this.slskdModal.error = error.response?.data?.detail || 'Failed to queue download'
+      }
+    },
+    
+    getFilename(path) {
+      return path.split(/[\\/]/).pop() || path
+    },
+    
+    formatSize(bytes) {
+      if (!bytes) return ''
+      const mb = bytes / (1024 * 1024)
+      return mb.toFixed(1) + ' MB'
     }
   }
 }
@@ -722,5 +882,104 @@ export default {
     align-items: center;
     text-align: center;
   }
+}
+
+/* SLSKD Styles */
+.btn-xs {
+  padding: 2px 6px;
+  font-size: 11px;
+  min-width: auto;
+}
+
+.btn-slskd {
+  background: #6495ED;
+  color: #fff;
+}
+
+.btn-slskd:hover:not(:disabled) {
+  background: #7ba3f0;
+}
+
+.spinner-xs {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.slskd-search-info {
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.slskd-results {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.slskd-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.slskd-file:hover {
+  background: var(--bg-hover);
+}
+
+.slskd-file.selected {
+  border-color: #6495ED;
+  background: rgba(100, 149, 237, 0.1);
+}
+
+.slskd-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.slskd-filename {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.slskd-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.slskd-ext {
+  color: #6495ED;
+  font-weight: 600;
+}
+
+.slskd-user {
+  color: var(--text-muted);
+}
+
+.slskd-check {
+  color: #6495ED;
+  font-size: 18px;
+  font-weight: bold;
+  margin-left: 12px;
 }
 </style>

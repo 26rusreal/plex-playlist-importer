@@ -619,6 +619,158 @@ def import_spotify_playlist(request: SpotifyImportRequest):
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
+# ============ SLSKD endpoints ============
+
+from .slskd_service import (
+    is_slskd_configured, get_slskd_service, get_slskd_api_key,
+    SlskdSettings as SlskdSettingsModel
+)
+
+
+class SlskdSettingsRequest(BaseModel):
+    enabled: bool = False
+    url: str = ""
+    allowed_extensions: List[str] = ["flac", "mp3", "wav", "ogg", "m4a"]
+    search_timeout: int = 10
+    max_results: int = 50
+    download_attempts: int = 3
+
+
+class SlskdSearchRequest(BaseModel):
+    query: str
+    artist: Optional[str] = None
+    title: Optional[str] = None
+
+
+class SlskdQueueRequest(BaseModel):
+    files: List[dict]
+
+
+@app.get("/api/slskd/status")
+def slskd_status():
+    """Check if SLSKD is available and configured"""
+    api_key_set = is_slskd_configured()
+    settings = load_settings()
+    enabled = settings.get('slskd_enabled', False)
+    
+    return {
+        "available": api_key_set,
+        "enabled": enabled and api_key_set,
+        "message": "SLSKD ready" if api_key_set and enabled else (
+            "SLSKD API key not set" if not api_key_set else "SLSKD disabled"
+        )
+    }
+
+
+@app.get("/api/slskd/settings")
+def get_slskd_settings():
+    """Get SLSKD settings"""
+    settings = load_settings()
+    return {
+        "enabled": settings.get('slskd_enabled', False),
+        "url": settings.get('slskd_url', 'http://localhost:5030'),
+        "allowed_extensions": settings.get('slskd_allowed_extensions', ['flac', 'mp3', 'wav', 'ogg', 'm4a']),
+        "search_timeout": settings.get('slskd_search_timeout', 10),
+        "max_results": settings.get('slskd_max_results', 50),
+        "download_attempts": settings.get('slskd_download_attempts', 3)
+    }
+
+
+@app.post("/api/slskd/settings")
+def save_slskd_settings(request: SlskdSettingsRequest):
+    """Save SLSKD settings"""
+    settings = load_settings()
+    settings['slskd_enabled'] = request.enabled
+    settings['slskd_url'] = request.url
+    settings['slskd_allowed_extensions'] = request.allowed_extensions
+    settings['slskd_search_timeout'] = request.search_timeout
+    settings['slskd_max_results'] = request.max_results
+    settings['slskd_download_attempts'] = request.download_attempts
+    save_settings(settings)
+    return {"status": "ok", "message": "SLSKD settings saved"}
+
+
+@app.post("/api/slskd/test")
+def test_slskd_connection(data: dict):
+    """Test connection to SLSKD server"""
+    if not is_slskd_configured():
+        raise HTTPException(status_code=400, detail="SLSKD API key not configured")
+    
+    url = data.get('url', '')
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    
+    from .slskd_service import SlskdService
+    service = SlskdService(url, get_slskd_api_key())
+    success, message = service.test_connection()
+    
+    if success:
+        return {"success": True, "message": message}
+    else:
+        raise HTTPException(status_code=400, detail=message)
+
+
+@app.post("/api/slskd/search")
+def slskd_search(request: SlskdSearchRequest):
+    """Search for tracks on Soulseek"""
+    if not is_slskd_configured():
+        raise HTTPException(status_code=400, detail="SLSKD API key not configured")
+    
+    service = get_slskd_service()
+    if not service:
+        raise HTTPException(status_code=500, detail="Failed to initialize SLSKD service")
+    
+    # Build search query
+    if request.artist and request.title:
+        query = f"{request.artist} {request.title}"
+    else:
+        query = request.query
+    
+    try:
+        result = service.search(query)
+        return {
+            "search_id": result.search_id,
+            "query": query,
+            "file_count": result.file_count,
+            "files": [
+                {
+                    "username": f.username,
+                    "filename": f.filename,
+                    "size": f.size,
+                    "extension": f.extension,
+                    "bit_rate": f.bit_rate,
+                    "bit_depth": f.bit_depth,
+                    "length": f.length
+                }
+                for f in result.files[:50]  # Limit to 50 results
+            ]
+        }
+    except TimeoutError as e:
+        raise HTTPException(status_code=408, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.post("/api/slskd/queue")
+def slskd_queue_download(request: SlskdQueueRequest):
+    """Queue files for download"""
+    if not is_slskd_configured():
+        raise HTTPException(status_code=400, detail="SLSKD API key not configured")
+    
+    service = get_slskd_service()
+    if not service:
+        raise HTTPException(status_code=500, detail="Failed to initialize SLSKD service")
+    
+    try:
+        result = service.queue_download(request.files)
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result['message'])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Queue failed: {str(e)}")
+
+
 # ============ Static files (frontend) ============
 
 # Mount static files if frontend build exists

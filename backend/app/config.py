@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     spotify_client_secret: str = Field(default="")
     # OAuth
     client_id: str = Field(default="")
+    # SLSKD settings
+    slskd_enabled: bool = Field(default=False)
+    slskd_url: str = Field(default="http://localhost:5030")
+    slskd_allowed_extensions: list = Field(default=["flac", "mp3", "wav", "ogg", "m4a"])
+    slskd_search_timeout: int = Field(default=10)
+    slskd_max_results: int = Field(default=50)
+    slskd_download_attempts: int = Field(default=3)
     
     class Config:
         env_prefix = "PLEX_"

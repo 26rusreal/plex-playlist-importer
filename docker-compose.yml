@@ -13,6 +13,9 @@ services:
     environment:
       - TZ=Europe/Moscow
       - SPOTIFY_SCRAPER_URL=http://host.docker.internal:3020
+      # SLSKD Integration (set your API key)
+      - SLSKD_API_KEY=${SLSKD_API_KEY:-}
+      - SLSKD_URL=http://host.docker.internal:5030
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # If Plex is in Docker, they need to be on the same network
