@@ -382,10 +382,11 @@ export default {
 }
 
 .hero-icon {
-  width: 120px;
-  height: 120px;
-  border-radius: 20px;
-  filter: drop-shadow(0 8px 24px rgba(229, 160, 13, 0.3));
+  width: auto;
+  height: 130px;
+  object-fit: contain;
+  border-radius: 50%;
+  filter: drop-shadow(0 8px 24px rgba(100, 120, 180, 0.4));
   animation: float 4s ease-in-out infinite, glow 2s ease-in-out infinite alternate;
 }
 
@@ -400,10 +401,10 @@ export default {
 
 @keyframes glow {
   0% {
-    filter: drop-shadow(0 8px 24px rgba(229, 160, 13, 0.3));
+    filter: drop-shadow(0 8px 24px rgba(100, 120, 180, 0.4));
   }
   100% {
-    filter: drop-shadow(0 8px 32px rgba(229, 160, 13, 0.6));
+    filter: drop-shadow(0 8px 32px rgba(100, 120, 180, 0.7));
   }
 }
 

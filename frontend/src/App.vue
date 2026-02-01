@@ -33,15 +33,16 @@ export default {
 
 <style scoped>
 .logo-img {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: auto;
+  height: 38px;
+  object-fit: contain;
+  border-radius: 50%;
   transition: all 0.3s ease;
-  filter: drop-shadow(0 0 8px rgba(229, 160, 13, 0.4));
+  filter: drop-shadow(0 0 8px rgba(100, 120, 180, 0.5));
 }
 
 .logo:hover .logo-img {
   transform: scale(1.1) rotate(-5deg);
-  filter: drop-shadow(0 0 16px rgba(229, 160, 13, 0.7));
+  filter: drop-shadow(0 0 16px rgba(100, 120, 180, 0.8));
 }
 </style>
