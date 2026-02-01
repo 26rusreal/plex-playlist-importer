@@ -5,3 +5,4 @@ python-multipart==0.0.9
 pydantic==2.6.1
 pydantic-settings==2.2.1
 aiofiles==23.2.1
+spotifyscraper==2.0.0

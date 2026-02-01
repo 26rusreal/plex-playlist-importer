@@ -2,7 +2,7 @@
   <div class="home">
     <!-- Hero Section with Icon -->
     <div class="hero-section">
-      <img src="/playlist-icon.svg" alt="Playlist Icon" class="hero-icon" />
+      <img src="/playlist-icon.png" alt="Playlist Icon" class="hero-icon" />
       <div class="stats">
         <div class="stat-item">
           <div class="stat-value">{{ playlists.length }}</div>
@@ -16,6 +16,43 @@
           <div class="stat-value">{{ selectedPlaylists.length }}</div>
           <div class="stat-label">Selected</div>
         </div>
+      </div>
+    </div>
+    
+    <!-- Spotify Import Card -->
+    <div class="card spotify-card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+          </svg>
+          Import from Spotify
+        </h2>
+      </div>
+      
+      <div class="spotify-input-row">
+        <input 
+          v-model="spotifyUrl" 
+          type="text" 
+          class="form-input" 
+          placeholder="Paste Spotify playlist URL (e.g. https://open.spotify.com/playlist/...)"
+          @keyup.enter="previewSpotify"
+        >
+        <button 
+          class="btn btn-primary" 
+          @click="previewSpotify" 
+          :disabled="!spotifyUrl || spotifyLoading"
+        >
+          <span v-if="spotifyLoading" class="spinner"></span>
+          Preview
+        </button>
+      </div>
+      
+      <div v-if="spotifyError" class="alert alert-error" style="margin-top: 12px;">
+        {{ spotifyError }}
+      </div>
+      <div v-if="spotifySuccess" class="alert alert-success" style="margin-top: 12px;">
+        {{ spotifySuccess }}
       </div>
     </div>
     
@@ -78,7 +115,7 @@
       </div>
       
       <div v-else-if="!filteredPlaylists.length" class="empty-state">
-        <img src="/playlist-icon.svg" alt="No playlists" class="empty-state-img" />
+        <img src="/playlist-icon.png" alt="No playlists" class="empty-state-img" />
         <p v-if="searchQuery">No playlists match "{{ searchQuery }}"</p>
         <p v-else>No playlists found. Check your settings.</p>
         <router-link to="/settings" class="btn btn-secondary" style="margin-top: 16px;">
@@ -182,6 +219,76 @@
       </div>
     </div>
     
+    <!-- Spotify Preview Modal -->
+    <div v-if="spotifyPreview" class="modal-overlay" @click.self="spotifyPreview = null">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            {{ spotifyPreview.name }}
+          </h3>
+          <button class="modal-close" @click="spotifyPreview = null">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="spotify-preview-header">
+            <img v-if="spotifyPreview.image_url" :src="spotifyPreview.image_url" class="spotify-cover" />
+            <div class="spotify-meta">
+              <div v-if="spotifyPreview.owner" class="spotify-owner">by {{ spotifyPreview.owner }}</div>
+              <div v-if="spotifyPreview.description" class="spotify-desc">{{ spotifyPreview.description }}</div>
+            </div>
+          </div>
+          
+          <!-- Match stats -->
+          <div style="display: flex; gap: 16px; margin: 16px 0;">
+            <span class="badge badge-success">
+              {{ spotifyMatchedCount }} matched
+            </span>
+            <span class="badge badge-error">
+              {{ spotifyUnmatchedCount }} not found
+            </span>
+          </div>
+          
+          <!-- Track list -->
+          <div class="track-list">
+            <div 
+              v-for="(track, index) in spotifyPreview.tracks" 
+              :key="index"
+              class="track-item"
+            >
+              <div class="track-info">
+                <div class="track-title">{{ track.title }}</div>
+                <div class="track-artist">{{ track.artist }}</div>
+                <div class="track-artist" v-if="track.matched && track.plex_title">
+                  → {{ track.plex_artist }} - {{ track.plex_title }}
+                </div>
+              </div>
+              <div class="track-status">
+                <span v-if="track.matched" class="badge badge-success">
+                  {{ track.match_type }}
+                </span>
+                <span v-else class="badge badge-error">
+                  not found
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <label class="checkbox" style="margin-right: auto;">
+            <input type="checkbox" v-model="spotifyOverwrite">
+            <span>Overwrite if exists</span>
+          </label>
+          <button class="btn btn-secondary" @click="spotifyPreview = null">Cancel</button>
+          <button class="btn btn-primary" @click="importSpotify" :disabled="spotifyImporting">
+            <span v-if="spotifyImporting" class="spinner"></span>
+            Import to Plex
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <!-- Import Results Modal -->
     <div v-if="importResults" class="modal-overlay" @click.self="importResults = null">
       <div class="modal">
@@ -221,87 +328,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Import Progress Modal -->
-    <div v-if="importProgress" class="modal-overlay" @click.self="closeImportProgress">
-      <div class="modal import-progress-modal">
-        <div class="modal-header">
-          <h3 class="modal-title">Импорт: {{ importProgress.playlistName }}</h3>
-          <button
-            v-if="importProgress.status !== 'running'"
-            class="modal-close"
-            @click="closeImportProgress"
-          >
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="import-progress-summary">
-            <div class="progress-bar">
-              <div class="progress-bar-fill" :style="{ width: `${importProgressPercent}%` }"></div>
-            </div>
-            <div class="progress-meta">
-              <span v-if="importProgress.status === 'running'">Добавление треков...</span>
-              <span v-else-if="importProgress.status === 'done'">Импорт завершен</span>
-              <span v-else>Импорт завершился ошибкой</span>
-              <span>{{ importProgress.processed }}/{{ importProgress.total }}</span>
-            </div>
-          </div>
-
-          <div v-if="!importProgress.tracks.length" class="empty-state">
-            <div class="spinner" style="width: 40px; height: 40px; margin: 0 auto;"></div>
-            <p style="margin-top: 16px;">Загружаем список треков...</p>
-          </div>
-
-          <div v-else class="track-list">
-            <div
-              v-for="(track, index) in importProgress.tracks"
-              :key="index"
-              class="track-item import-track-item"
-              :class="{ active: importProgress.status === 'running' && importProgress.activeIndex === index }"
-            >
-              <div class="track-info">
-                <div class="track-title">
-                  {{ track.title || track.filename || track.plex_title || 'Неизвестный трек' }}
-                </div>
-                <div class="track-artist" v-if="track.artist">
-                  {{ track.artist }}
-                </div>
-                <div class="track-artist" v-else-if="track.plex_artist">
-                  {{ track.plex_artist }}
-                </div>
-              </div>
-              <div class="track-status">
-                <span v-if="track.status === 'added'" class="badge badge-success">
-                  добавлен
-                </span>
-                <span v-else-if="track.status === 'skipped'" class="badge badge-error">
-                  не найден
-                </span>
-                <span v-else-if="track.status === 'error'" class="badge badge-error">
-                  ошибка
-                </span>
-                <span v-else class="badge badge-info">
-                  в очереди
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="importProgress.message" class="alert alert-error" style="margin-top: 16px;">
-            {{ importProgress.message }}
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button v-if="importProgress.status !== 'running'" class="btn btn-primary" @click="closeImportProgress">
-            Готово
-          </button>
-          <button v-else class="btn btn-secondary" disabled>
-            Импортируем...
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -324,8 +350,14 @@ export default {
       previewModal: null,
       previewLoading: false,
       importResults: null,
-      importProgress: null,
-      importProgressTimer: null
+      // Spotify
+      spotifyUrl: '',
+      spotifyLoading: false,
+      spotifyError: '',
+      spotifySuccess: '',
+      spotifyPreview: null,
+      spotifyOverwrite: false,
+      spotifyImporting: false
     }
   },
   computed: {
@@ -347,9 +379,13 @@ export default {
       if (!this.previewModal?.tracks) return 0
       return this.previewModal.tracks.filter(t => !t.matched).length
     },
-    importProgressPercent() {
-      if (!this.importProgress?.total) return 0
-      return Math.round((this.importProgress.processed / this.importProgress.total) * 100)
+    spotifyMatchedCount() {
+      if (!this.spotifyPreview?.tracks) return 0
+      return this.spotifyPreview.tracks.filter(t => t.matched).length
+    },
+    spotifyUnmatchedCount() {
+      if (!this.spotifyPreview?.tracks) return 0
+      return this.spotifyPreview.tracks.filter(t => !t.matched).length
     }
   },
   mounted() {
@@ -410,188 +446,96 @@ export default {
     },
     
     async importSingle(playlist) {
-      const result = await this.importPlaylistWithVisualization(playlist)
-      if (result?.created) {
-        this.successMessage = `Created "${result.playlist_name}" with ${result.matched_tracks}/${result.total_tracks} tracks`
+      this.importing = true
+      this.error = ''
+      this.successMessage = ''
+      
+      try {
+        const { data } = await axios.post('/api/playlists/import', {
+          playlist_path: playlist.path,
+          overwrite: this.overwrite
+        })
+        this.successMessage = `Created "${data.playlist_name}" with ${data.matched_tracks}/${data.total_tracks} tracks`
+      } catch (error) {
+        this.error = error.response?.data?.detail || 'Import failed'
       }
+      
+      this.importing = false
     },
     
     async importFromPreview() {
       if (!this.previewModal) return
-      const tracks = this.previewModal.tracks || []
-      const result = await this.importPlaylistWithVisualization(this.previewModal, { tracks })
-      if (result?.created) {
-        this.successMessage = `Created "${result.playlist_name}" with ${result.matched_tracks}/${result.total_tracks} tracks`
-      }
+      await this.importSingle(this.previewModal)
       this.previewModal = null
     },
     
     async importSelected() {
       if (!this.selectedPlaylists.length) return
+      
       this.importing = true
       this.error = ''
       this.successMessage = ''
-      this.importResults = null
-
-      const results = []
-      for (const playlist of this.selectedPlaylists) {
-        const result = await this.importPlaylistWithVisualization(playlist, { showMessages: false })
-        if (result) {
-          results.push(result)
-        }
+      
+      try {
+        const { data } = await axios.post('/api/playlists/import-batch', {
+          playlist_paths: this.selectedPlaylists.map(p => p.path),
+          overwrite: this.overwrite
+        })
+        
+        this.importResults = data
+        this.selectedPlaylists = []
+        this.selectAll = false
+      } catch (error) {
+        this.error = error.response?.data?.detail || 'Batch import failed'
       }
-
-      this.importResults = {
-        results,
-        total: results.length,
-        successful: results.filter(result => result.created).length
-      }
-      this.selectedPlaylists = []
-      this.selectAll = false
+      
       this.importing = false
     },
-
-    async importPlaylistWithVisualization(playlist, { tracks = [], showMessages = true } = {}) {
-      this.importing = true
-      if (showMessages) {
-        this.error = ''
-        this.successMessage = ''
-      }
-
-      this.startImportProgress(playlist.name, tracks)
-
-      const previewPromise = tracks.length ? null : this.fetchPreviewTracks(playlist)
-      const importPromise = axios.post('/api/playlists/import', {
-        playlist_path: playlist.path,
-        overwrite: this.overwrite
-      })
-
-      if (previewPromise) {
-        const previewTracks = await previewPromise
-        if (previewTracks.length) {
-          this.updateImportTracks(previewTracks)
-        }
-      }
-
+    
+    // Spotify methods
+    async previewSpotify() {
+      if (!this.spotifyUrl) return
+      
+      this.spotifyLoading = true
+      this.spotifyError = ''
+      this.spotifySuccess = ''
+      
       try {
-        const { data } = await importPromise
-        const matches = data.matches || this.importProgress?.tracks || []
-        await this.revealImportMatches(matches)
-        this.importProgress.status = 'done'
-        return data
-      } catch (error) {
-        const message = error.response?.data?.detail || 'Import failed'
-        this.importProgress.status = 'error'
-        this.importProgress.message = message
-        this.markImportTracksError()
-        if (showMessages) {
-          this.error = message
-        }
-        return {
-          playlist_name: playlist.name,
-          total_tracks: this.importProgress?.total || playlist.track_count || 0,
-          matched_tracks: 0,
-          created: false,
-          error: message
-        }
-      } finally {
-        this.importing = false
-      }
-    },
-
-    startImportProgress(playlistName, tracks) {
-      this.importProgress = {
-        playlistName,
-        tracks: tracks.map(track => ({ ...track, status: 'pending' })),
-        processed: 0,
-        total: tracks.length,
-        status: 'running',
-        activeIndex: 0,
-        message: ''
-      }
-      this.startImportProgressTicker()
-    },
-
-    startImportProgressTicker() {
-      this.stopImportProgressTicker()
-      if (!this.importProgress?.tracks.length) return
-      this.importProgressTimer = setInterval(() => {
-        if (!this.importProgress || this.importProgress.status !== 'running') return
-        const nextIndex = (this.importProgress.activeIndex + 1) % this.importProgress.tracks.length
-        this.importProgress.activeIndex = nextIndex
-      }, 450)
-    },
-
-    stopImportProgressTicker() {
-      if (this.importProgressTimer) {
-        clearInterval(this.importProgressTimer)
-        this.importProgressTimer = null
-      }
-    },
-
-    updateImportTracks(tracks) {
-      if (!this.importProgress) return
-      this.importProgress.tracks = tracks.map(track => ({ ...track, status: 'pending' }))
-      this.importProgress.total = tracks.length
-      this.importProgress.processed = 0
-      this.importProgress.activeIndex = 0
-      this.startImportProgressTicker()
-    },
-
-    async fetchPreviewTracks(playlist) {
-      try {
-        const { data } = await axios.get('/api/playlists/preview', {
-          params: { path: playlist.path }
+        const { data } = await axios.post('/api/spotify/preview', {
+          url: this.spotifyUrl
         })
-        return data.tracks || []
+        this.spotifyPreview = data
       } catch (error) {
-        return []
+        this.spotifyError = error.response?.data?.detail || 'Failed to load Spotify playlist'
       }
+      
+      this.spotifyLoading = false
     },
-
-    async revealImportMatches(matches) {
-      if (!this.importProgress) return
-      this.stopImportProgressTicker()
-      const preparedMatches = matches.map(match => ({
-        ...match,
-        status: match.matched ? 'added' : 'skipped'
-      }))
-
-      if (!preparedMatches.length) {
-        this.importProgress.processed = 0
-        this.importProgress.total = 0
-        return
+    
+    async importSpotify() {
+      if (!this.spotifyPreview) return
+      
+      this.spotifyImporting = true
+      
+      try {
+        const { data } = await axios.post('/api/spotify/import', {
+          url: this.spotifyUrl,
+          overwrite: this.spotifyOverwrite
+        })
+        
+        this.spotifyPreview = null
+        this.spotifyUrl = ''
+        this.spotifySuccess = `Created "${data.playlist_name}" with ${data.matched_tracks}/${data.total_tracks} tracks`
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          this.spotifySuccess = ''
+        }, 5000)
+      } catch (error) {
+        this.spotifyError = error.response?.data?.detail || 'Import failed'
       }
-
-      this.importProgress.tracks = preparedMatches.map(match => ({ ...match, status: 'pending' }))
-      this.importProgress.total = preparedMatches.length
-      this.importProgress.processed = 0
-
-      for (let index = 0; index < preparedMatches.length; index += 1) {
-        this.importProgress.activeIndex = index
-        this.importProgress.tracks.splice(index, 1, preparedMatches[index])
-        this.importProgress.processed = index + 1
-        await this.wait(70)
-      }
-    },
-
-    markImportTracksError() {
-      if (!this.importProgress?.tracks.length) return
-      this.stopImportProgressTicker()
-      this.importProgress.tracks = this.importProgress.tracks.map(track => ({
-        ...track,
-        status: 'error'
-      }))
-    },
-
-    closeImportProgress() {
-      if (this.importProgress?.status === 'running') return
-      this.stopImportProgressTicker()
-      this.importProgress = null
-    },
-
-    wait(delay) {
-      return new Promise(resolve => setTimeout(resolve, delay))
+      
+      this.spotifyImporting = false
     }
   }
 }
@@ -661,38 +605,52 @@ export default {
   }
 }
 
-.import-progress-modal {
-  max-width: 720px;
+/* Spotify Card */
+.spotify-card {
+  background: linear-gradient(135deg, rgba(29, 185, 84, 0.1) 0%, rgba(0, 0, 0, 0) 50%);
+  border: 1px solid rgba(29, 185, 84, 0.3);
 }
 
-.import-progress-summary {
-  margin-bottom: 20px;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 10px;
-  background: var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), #7ab8ff);
-  transition: width 0.3s ease;
-}
-
-.progress-meta {
-  margin-top: 10px;
+.spotify-input-row {
   display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--text-secondary);
+  gap: 12px;
 }
 
-.import-track-item.active {
-  background: rgba(122, 184, 255, 0.15);
+.spotify-input-row .form-input {
+  flex: 1;
+}
+
+.spotify-preview-header {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.spotify-cover {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.spotify-meta {
+  flex: 1;
+}
+
+.spotify-owner {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.spotify-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  max-height: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Responsive */
@@ -711,6 +669,16 @@ export default {
     flex-direction: column;
     gap: 12px;
     width: 100%;
+  }
+  
+  .spotify-input-row {
+    flex-direction: column;
+  }
+  
+  .spotify-preview-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 }
 </style>

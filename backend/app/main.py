@@ -7,9 +7,10 @@ from typing import List, Optional, Dict
 import os
 
 from .config import get_settings, save_settings, load_settings
-from .m3u_parser import scan_playlists, parse_m3u
+from .m3u_parser import scan_playlists, parse_m3u, Playlist, Track
 from .plex_service import PlexService
 from . import plex_auth
+from .spotify_service import SpotifyService, is_spotify_available
 
 app = FastAPI(title="Plex Playlist Importer", version="1.0.0")
 
@@ -70,23 +71,10 @@ class ImportResultModel(BaseModel):
     matched_tracks: int
     created: bool
     error: Optional[str] = None
-    matches: Optional[List[TrackInfo]] = None
 
 
 # Global plex service cache
 _plex_service: Optional[PlexService] = None
-
-
-def build_track_info(match) -> TrackInfo:
-    return TrackInfo(
-        filename=match.track.filename,
-        title=match.track.title,
-        artist=match.track.artist,
-        matched=match.matched,
-        match_type=match.match_type,
-        plex_title=match.plex_track.title if match.plex_track else None,
-        plex_artist=match.plex_track.grandparentTitle if match.plex_track else None
-    )
 
 
 def get_plex_service() -> PlexService:
@@ -331,7 +319,16 @@ def preview_playlist(path: str):
         
         tracks = []
         for match in result.matches:
-            tracks.append(build_track_info(match))
+            track_info = TrackInfo(
+                filename=match.track.filename,
+                title=match.track.title,
+                artist=match.track.artist,
+                matched=match.matched,
+                match_type=match.match_type,
+                plex_title=match.plex_track.title if match.plex_track else None,
+                plex_artist=match.plex_track.grandparentTitle if match.plex_track else None
+            )
+            tracks.append(track_info)
         
         return PlaylistInfo(
             name=playlist.name,
@@ -378,8 +375,7 @@ def import_playlist(request: ImportRequest):
         total_tracks=result.total_tracks,
         matched_tracks=result.matched_tracks,
         created=result.created,
-        error=result.error,
-        matches=[build_track_info(match) for match in result.matches] if result.matches else None
+        error=result.error
     )
 
 
@@ -408,8 +404,7 @@ def import_batch(request: BatchImportRequest):
             total_tracks=result.total_tracks,
             matched_tracks=result.matched_tracks,
             created=result.created,
-            error=result.error,
-            matches=[build_track_info(match) for match in result.matches] if result.matches else None
+            error=result.error
         ))
     
     return {
@@ -429,6 +424,146 @@ def get_plex_playlists():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ Spotify endpoints ============
+
+class SpotifyUrlRequest(BaseModel):
+    url: str
+
+
+class SpotifyImportRequest(BaseModel):
+    url: str
+    overwrite: bool = False
+
+
+@app.get("/api/spotify/status")
+def spotify_status():
+    """Check if Spotify functionality is available"""
+    return {
+        "available": is_spotify_available(),
+        "message": "Spotify integration ready" if is_spotify_available() else "spotifyscraper not installed"
+    }
+
+
+@app.post("/api/spotify/preview")
+def preview_spotify_playlist(request: SpotifyUrlRequest):
+    """Preview a Spotify playlist - get tracks and match with Plex"""
+    if not is_spotify_available():
+        raise HTTPException(status_code=503, detail="Spotify functionality not available")
+    
+    try:
+        spotify = SpotifyService()
+        playlist = spotify.get_playlist(request.url)
+        
+        # Try to match tracks with Plex
+        tracks_info = []
+        try:
+            plex = get_plex_service()
+            for sp_track in playlist.tracks:
+                # Search in Plex
+                plex_track = plex.find_track(sp_track.artist, sp_track.title)
+                tracks_info.append({
+                    "title": sp_track.title,
+                    "artist": sp_track.artist,
+                    "album": sp_track.album,
+                    "duration_ms": sp_track.duration_ms,
+                    "matched": plex_track is not None,
+                    "match_type": "exact" if plex_track else "none",
+                    "plex_title": plex_track.title if plex_track else None,
+                    "plex_artist": plex_track.grandparentTitle if plex_track else None
+                })
+        except HTTPException:
+            # Plex not connected - return tracks without matching
+            for sp_track in playlist.tracks:
+                tracks_info.append({
+                    "title": sp_track.title,
+                    "artist": sp_track.artist,
+                    "album": sp_track.album,
+                    "duration_ms": sp_track.duration_ms,
+                    "matched": False,
+                    "match_type": "unknown",
+                    "plex_title": None,
+                    "plex_artist": None
+                })
+        
+        return {
+            "name": playlist.name,
+            "description": playlist.description,
+            "owner": playlist.owner,
+            "url": playlist.url,
+            "image_url": playlist.image_url,
+            "track_count": len(playlist.tracks),
+            "tracks": tracks_info
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching playlist: {str(e)}")
+
+
+@app.post("/api/spotify/import")
+def import_spotify_playlist(request: SpotifyImportRequest):
+    """Import a Spotify playlist to Plex"""
+    if not is_spotify_available():
+        raise HTTPException(status_code=503, detail="Spotify functionality not available")
+    
+    try:
+        spotify = SpotifyService()
+        sp_playlist = spotify.get_playlist(request.url)
+        
+        # Convert to Playlist format for import
+        tracks = []
+        for sp_track in sp_playlist.tracks:
+            track = Track(
+                filename=f"{sp_track.artist} - {sp_track.title}",
+                path=f"spotify:{sp_track.uri or ''}",
+                title=sp_track.title,
+                artist=sp_track.artist,
+                duration=sp_track.duration_ms // 1000 if sp_track.duration_ms else None
+            )
+            tracks.append(track)
+        
+        playlist = Playlist(
+            name=sp_playlist.name,
+            path=f"spotify:{sp_playlist.url}",
+            folder="Spotify",
+            tracks=tracks
+        )
+        
+        # Import to Plex
+        plex = get_plex_service()
+        result = plex.import_playlist(playlist, overwrite=request.overwrite)
+        
+        return {
+            "playlist_name": result.playlist_name,
+            "total_tracks": result.total_tracks,
+            "matched_tracks": result.matched_tracks,
+            "created": result.created,
+            "error": result.error,
+            "source": "spotify",
+            "spotify_url": request.url,
+            "matches": [
+                {
+                    "filename": m.track.filename,
+                    "title": m.track.title,
+                    "artist": m.track.artist,
+                    "matched": m.matched,
+                    "match_type": m.match_type,
+                    "plex_title": m.plex_track.title if m.plex_track else None,
+                    "plex_artist": m.plex_track.grandparentTitle if m.plex_track else None
+                }
+                for m in result.matches
+            ] if hasattr(result, 'matches') else []
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
 # ============ Static files (frontend) ============
