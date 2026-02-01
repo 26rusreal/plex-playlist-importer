@@ -1,13 +1,16 @@
 """
-Spotify Playlist Service - парсинг публичных плейлистов без авторизации
+Spotify Playlist Service - через официальный Spotify API
+Требует Client ID и Client Secret из Spotify Developer Dashboard
 """
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from urllib.parse import urlparse
 import logging
+import os
 from dataclasses import dataclass
 
 try:
-    from spotify_scraper import SpotifyClient
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
     SPOTIFY_AVAILABLE = True
 except ImportError:
     SPOTIFY_AVAILABLE = False
@@ -34,16 +37,28 @@ class SpotifyPlaylist:
     url: str
     tracks: List[SpotifyTrack]
     image_url: Optional[str] = None
+    total_tracks: int = 0
 
 
 class SpotifyService:
-    """Сервис для работы со Spotify плейлистами"""
+    """Сервис для работы со Spotify API"""
     
-    def __init__(self):
+    def __init__(self, client_id: str = None, client_secret: str = None):
         if not SPOTIFY_AVAILABLE:
-            raise ImportError("spotifyscraper не установлен")
-        self.client = SpotifyClient()
-        logger.info("SpotifyService initialized")
+            raise ImportError("spotipy не установлен")
+        
+        self.client_id = client_id or os.environ.get('SPOTIFY_CLIENT_ID', '')
+        self.client_secret = client_secret or os.environ.get('SPOTIFY_CLIENT_SECRET', '')
+        
+        if not self.client_id or not self.client_secret:
+            raise ValueError("Spotify credentials not configured")
+        
+        auth_manager = SpotifyClientCredentials(
+            client_id=self.client_id,
+            client_secret=self.client_secret
+        )
+        self.client = spotipy.Spotify(auth_manager=auth_manager)
+        logger.info("SpotifyService initialized with API credentials")
     
     @staticmethod
     def is_valid_url(url: str) -> bool:
@@ -64,6 +79,7 @@ class SpotifyService:
             parsed = urlparse(url)
             path_parts = parsed.path.strip('/').split('/')
             if len(path_parts) >= 2 and path_parts[0] == 'playlist':
+                # Remove query params
                 return path_parts[1].split('?')[0]
         except Exception:
             pass
@@ -71,7 +87,7 @@ class SpotifyService:
     
     def get_playlist(self, url: str) -> SpotifyPlaylist:
         """
-        Получение плейлиста по URL
+        Получение плейлиста по URL через Spotify API
         
         Args:
             url: URL Spotify плейлиста
@@ -82,66 +98,86 @@ class SpotifyService:
         if not self.is_valid_url(url):
             raise ValueError("Невалидный Spotify URL")
         
+        playlist_id = self.extract_playlist_id(url)
+        if not playlist_id:
+            raise ValueError("Не удалось извлечь ID плейлиста")
+        
         try:
-            logger.info(f"Scraping playlist: {url}")
-            raw_data = self.client.get_playlist_info(url)
+            logger.info(f"Fetching playlist: {playlist_id}")
             
-            if not raw_data:
-                raise ValueError("Не удалось получить данные плейлиста")
+            # Get playlist info
+            playlist_data = self.client.playlist(playlist_id)
             
+            # Get all tracks (handle pagination)
             tracks = []
-            raw_tracks = raw_data.get('tracks', [])
+            results = playlist_data['tracks']
             
-            for track_data in raw_tracks:
-                # Извлекаем информацию о треке
-                track = SpotifyTrack(
-                    title=track_data.get('name', 'Unknown'),
-                    artist=self._extract_artist(track_data),
-                    album=track_data.get('album', {}).get('name') if isinstance(track_data.get('album'), dict) else None,
-                    duration_ms=track_data.get('duration_ms'),
-                    uri=track_data.get('uri')
-                )
-                tracks.append(track)
+            while True:
+                for item in results['items']:
+                    track_data = item.get('track')
+                    if not track_data:
+                        continue
+                    
+                    # Extract artist names
+                    artists = track_data.get('artists', [])
+                    artist_name = artists[0]['name'] if artists else 'Unknown Artist'
+                    
+                    track = SpotifyTrack(
+                        title=track_data.get('name', 'Unknown'),
+                        artist=artist_name,
+                        album=track_data.get('album', {}).get('name'),
+                        duration_ms=track_data.get('duration_ms'),
+                        uri=track_data.get('uri')
+                    )
+                    tracks.append(track)
+                
+                # Check for more pages
+                if results['next']:
+                    results = self.client.next(results)
+                else:
+                    break
+            
+            # Extract image
+            images = playlist_data.get('images', [])
+            image_url = images[0]['url'] if images else None
             
             playlist = SpotifyPlaylist(
-                name=raw_data.get('name', 'Unknown Playlist'),
-                description=raw_data.get('description'),
-                owner=raw_data.get('owner', {}).get('name', 'Unknown') if isinstance(raw_data.get('owner'), dict) else 'Unknown',
+                name=playlist_data.get('name', 'Unknown Playlist'),
+                description=playlist_data.get('description'),
+                owner=playlist_data.get('owner', {}).get('display_name', 'Unknown'),
                 url=url,
                 tracks=tracks,
-                image_url=self._extract_image(raw_data)
+                image_url=image_url,
+                total_tracks=playlist_data.get('tracks', {}).get('total', len(tracks))
             )
             
-            logger.info(f"Successfully scraped playlist: {playlist.name} ({len(tracks)} tracks)")
+            logger.info(f"Successfully fetched playlist: {playlist.name} ({len(tracks)} tracks)")
             return playlist
             
         except Exception as e:
-            logger.error(f"Error scraping playlist: {e}")
+            logger.error(f"Error fetching playlist: {e}")
             raise ValueError(f"Ошибка при получении плейлиста: {str(e)}")
-    
-    def _extract_artist(self, track_data: Dict[str, Any]) -> str:
-        """Извлечение имени артиста из данных трека"""
-        artists = track_data.get('artists', [])
-        if isinstance(artists, list) and len(artists) > 0:
-            first_artist = artists[0]
-            if isinstance(first_artist, dict):
-                return first_artist.get('name', 'Unknown Artist')
-            elif isinstance(first_artist, str):
-                return first_artist
-        return 'Unknown Artist'
-    
-    def _extract_image(self, data: Dict[str, Any]) -> Optional[str]:
-        """Извлечение URL изображения"""
-        images = data.get('images', [])
-        if isinstance(images, list) and len(images) > 0:
-            first_image = images[0]
-            if isinstance(first_image, dict):
-                return first_image.get('url')
-            elif isinstance(first_image, str):
-                return first_image
-        return None
 
 
 def is_spotify_available() -> bool:
     """Проверка доступности Spotify функционала"""
     return SPOTIFY_AVAILABLE
+
+
+def is_spotify_configured() -> bool:
+    """Проверка настроены ли Spotify credentials"""
+    from .config import load_settings
+    settings = load_settings()
+    client_id = settings.get('spotify_client_id', '')
+    client_secret = settings.get('spotify_client_secret', '')
+    return bool(client_id and client_secret)
+
+
+def get_spotify_service() -> SpotifyService:
+    """Получение настроенного Spotify сервиса"""
+    from .config import load_settings
+    settings = load_settings()
+    return SpotifyService(
+        client_id=settings.get('spotify_client_id', ''),
+        client_secret=settings.get('spotify_client_secret', '')
+    )

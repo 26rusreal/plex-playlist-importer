@@ -54,6 +54,11 @@
       <div v-if="spotifySuccess" class="alert alert-success" style="margin-top: 12px;">
         {{ spotifySuccess }}
       </div>
+      
+      <div v-if="!spotifyConfigured" class="spotify-setup-hint">
+        <span>⚠️</span> Spotify not configured. 
+        <router-link to="/settings">Add credentials in Settings</router-link>
+      </div>
     </div>
     
     <!-- Actions Card -->
@@ -357,7 +362,8 @@ export default {
       spotifySuccess: '',
       spotifyPreview: null,
       spotifyOverwrite: false,
-      spotifyImporting: false
+      spotifyImporting: false,
+      spotifyConfigured: true // assume configured until check
     }
   },
   computed: {
@@ -390,8 +396,18 @@ export default {
   },
   mounted() {
     this.loadPlaylists()
+    this.checkSpotifyStatus()
   },
   methods: {
+    async checkSpotifyStatus() {
+      try {
+        const { data } = await axios.get('/api/spotify/status')
+        this.spotifyConfigured = data.configured
+      } catch (error) {
+        this.spotifyConfigured = false
+      }
+    },
+    
     async loadPlaylists() {
       this.loading = true
       this.error = ''
@@ -651,6 +667,25 @@ export default {
   max-height: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.spotify-setup-hint {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(229, 160, 13, 0.1);
+  border: 1px solid rgba(229, 160, 13, 0.3);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.spotify-setup-hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.spotify-setup-hint a:hover {
+  text-decoration: underline;
 }
 
 /* Responsive */
