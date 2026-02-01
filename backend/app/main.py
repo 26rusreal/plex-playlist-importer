@@ -70,10 +70,23 @@ class ImportResultModel(BaseModel):
     matched_tracks: int
     created: bool
     error: Optional[str] = None
+    matches: Optional[List[TrackInfo]] = None
 
 
 # Global plex service cache
 _plex_service: Optional[PlexService] = None
+
+
+def build_track_info(match) -> TrackInfo:
+    return TrackInfo(
+        filename=match.track.filename,
+        title=match.track.title,
+        artist=match.track.artist,
+        matched=match.matched,
+        match_type=match.match_type,
+        plex_title=match.plex_track.title if match.plex_track else None,
+        plex_artist=match.plex_track.grandparentTitle if match.plex_track else None
+    )
 
 
 def get_plex_service() -> PlexService:
@@ -318,16 +331,7 @@ def preview_playlist(path: str):
         
         tracks = []
         for match in result.matches:
-            track_info = TrackInfo(
-                filename=match.track.filename,
-                title=match.track.title,
-                artist=match.track.artist,
-                matched=match.matched,
-                match_type=match.match_type,
-                plex_title=match.plex_track.title if match.plex_track else None,
-                plex_artist=match.plex_track.grandparentTitle if match.plex_track else None
-            )
-            tracks.append(track_info)
+            tracks.append(build_track_info(match))
         
         return PlaylistInfo(
             name=playlist.name,
@@ -374,7 +378,8 @@ def import_playlist(request: ImportRequest):
         total_tracks=result.total_tracks,
         matched_tracks=result.matched_tracks,
         created=result.created,
-        error=result.error
+        error=result.error,
+        matches=[build_track_info(match) for match in result.matches] if result.matches else None
     )
 
 
@@ -403,7 +408,8 @@ def import_batch(request: BatchImportRequest):
             total_tracks=result.total_tracks,
             matched_tracks=result.matched_tracks,
             created=result.created,
-            error=result.error
+            error=result.error,
+            matches=[build_track_info(match) for match in result.matches] if result.matches else None
         ))
     
     return {

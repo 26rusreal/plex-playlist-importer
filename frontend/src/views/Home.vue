@@ -221,6 +221,87 @@
         </div>
       </div>
     </div>
+
+    <!-- Import Progress Modal -->
+    <div v-if="importProgress" class="modal-overlay" @click.self="closeImportProgress">
+      <div class="modal import-progress-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Импорт: {{ importProgress.playlistName }}</h3>
+          <button
+            v-if="importProgress.status !== 'running'"
+            class="modal-close"
+            @click="closeImportProgress"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="import-progress-summary">
+            <div class="progress-bar">
+              <div class="progress-bar-fill" :style="{ width: `${importProgressPercent}%` }"></div>
+            </div>
+            <div class="progress-meta">
+              <span v-if="importProgress.status === 'running'">Добавление треков...</span>
+              <span v-else-if="importProgress.status === 'done'">Импорт завершен</span>
+              <span v-else>Импорт завершился ошибкой</span>
+              <span>{{ importProgress.processed }}/{{ importProgress.total }}</span>
+            </div>
+          </div>
+
+          <div v-if="!importProgress.tracks.length" class="empty-state">
+            <div class="spinner" style="width: 40px; height: 40px; margin: 0 auto;"></div>
+            <p style="margin-top: 16px;">Загружаем список треков...</p>
+          </div>
+
+          <div v-else class="track-list">
+            <div
+              v-for="(track, index) in importProgress.tracks"
+              :key="index"
+              class="track-item import-track-item"
+              :class="{ active: importProgress.status === 'running' && importProgress.activeIndex === index }"
+            >
+              <div class="track-info">
+                <div class="track-title">
+                  {{ track.title || track.filename || track.plex_title || 'Неизвестный трек' }}
+                </div>
+                <div class="track-artist" v-if="track.artist">
+                  {{ track.artist }}
+                </div>
+                <div class="track-artist" v-else-if="track.plex_artist">
+                  {{ track.plex_artist }}
+                </div>
+              </div>
+              <div class="track-status">
+                <span v-if="track.status === 'added'" class="badge badge-success">
+                  добавлен
+                </span>
+                <span v-else-if="track.status === 'skipped'" class="badge badge-error">
+                  не найден
+                </span>
+                <span v-else-if="track.status === 'error'" class="badge badge-error">
+                  ошибка
+                </span>
+                <span v-else class="badge badge-info">
+                  в очереди
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="importProgress.message" class="alert alert-error" style="margin-top: 16px;">
+            {{ importProgress.message }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button v-if="importProgress.status !== 'running'" class="btn btn-primary" @click="closeImportProgress">
+            Готово
+          </button>
+          <button v-else class="btn btn-secondary" disabled>
+            Импортируем...
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -242,7 +323,9 @@ export default {
       overwrite: false,
       previewModal: null,
       previewLoading: false,
-      importResults: null
+      importResults: null,
+      importProgress: null,
+      importProgressTimer: null
     }
   },
   computed: {
@@ -263,6 +346,10 @@ export default {
     unmatchedCount() {
       if (!this.previewModal?.tracks) return 0
       return this.previewModal.tracks.filter(t => !t.matched).length
+    },
+    importProgressPercent() {
+      if (!this.importProgress?.total) return 0
+      return Math.round((this.importProgress.processed / this.importProgress.total) * 100)
     }
   },
   mounted() {
@@ -323,50 +410,188 @@ export default {
     },
     
     async importSingle(playlist) {
-      this.importing = true
-      this.error = ''
-      this.successMessage = ''
-      
-      try {
-        const { data } = await axios.post('/api/playlists/import', {
-          playlist_path: playlist.path,
-          overwrite: this.overwrite
-        })
-        this.successMessage = `Created "${data.playlist_name}" with ${data.matched_tracks}/${data.total_tracks} tracks`
-      } catch (error) {
-        this.error = error.response?.data?.detail || 'Import failed'
+      const result = await this.importPlaylistWithVisualization(playlist)
+      if (result?.created) {
+        this.successMessage = `Created "${result.playlist_name}" with ${result.matched_tracks}/${result.total_tracks} tracks`
       }
-      
-      this.importing = false
     },
     
     async importFromPreview() {
       if (!this.previewModal) return
-      await this.importSingle(this.previewModal)
+      const tracks = this.previewModal.tracks || []
+      const result = await this.importPlaylistWithVisualization(this.previewModal, { tracks })
+      if (result?.created) {
+        this.successMessage = `Created "${result.playlist_name}" with ${result.matched_tracks}/${result.total_tracks} tracks`
+      }
       this.previewModal = null
     },
     
     async importSelected() {
       if (!this.selectedPlaylists.length) return
-      
       this.importing = true
       this.error = ''
       this.successMessage = ''
-      
-      try {
-        const { data } = await axios.post('/api/playlists/import-batch', {
-          playlist_paths: this.selectedPlaylists.map(p => p.path),
-          overwrite: this.overwrite
-        })
-        
-        this.importResults = data
-        this.selectedPlaylists = []
-        this.selectAll = false
-      } catch (error) {
-        this.error = error.response?.data?.detail || 'Batch import failed'
+      this.importResults = null
+
+      const results = []
+      for (const playlist of this.selectedPlaylists) {
+        const result = await this.importPlaylistWithVisualization(playlist, { showMessages: false })
+        if (result) {
+          results.push(result)
+        }
       }
-      
+
+      this.importResults = {
+        results,
+        total: results.length,
+        successful: results.filter(result => result.created).length
+      }
+      this.selectedPlaylists = []
+      this.selectAll = false
       this.importing = false
+    },
+
+    async importPlaylistWithVisualization(playlist, { tracks = [], showMessages = true } = {}) {
+      this.importing = true
+      if (showMessages) {
+        this.error = ''
+        this.successMessage = ''
+      }
+
+      this.startImportProgress(playlist.name, tracks)
+
+      const previewPromise = tracks.length ? null : this.fetchPreviewTracks(playlist)
+      const importPromise = axios.post('/api/playlists/import', {
+        playlist_path: playlist.path,
+        overwrite: this.overwrite
+      })
+
+      if (previewPromise) {
+        const previewTracks = await previewPromise
+        if (previewTracks.length) {
+          this.updateImportTracks(previewTracks)
+        }
+      }
+
+      try {
+        const { data } = await importPromise
+        const matches = data.matches || this.importProgress?.tracks || []
+        await this.revealImportMatches(matches)
+        this.importProgress.status = 'done'
+        return data
+      } catch (error) {
+        const message = error.response?.data?.detail || 'Import failed'
+        this.importProgress.status = 'error'
+        this.importProgress.message = message
+        this.markImportTracksError()
+        if (showMessages) {
+          this.error = message
+        }
+        return {
+          playlist_name: playlist.name,
+          total_tracks: this.importProgress?.total || playlist.track_count || 0,
+          matched_tracks: 0,
+          created: false,
+          error: message
+        }
+      } finally {
+        this.importing = false
+      }
+    },
+
+    startImportProgress(playlistName, tracks) {
+      this.importProgress = {
+        playlistName,
+        tracks: tracks.map(track => ({ ...track, status: 'pending' })),
+        processed: 0,
+        total: tracks.length,
+        status: 'running',
+        activeIndex: 0,
+        message: ''
+      }
+      this.startImportProgressTicker()
+    },
+
+    startImportProgressTicker() {
+      this.stopImportProgressTicker()
+      if (!this.importProgress?.tracks.length) return
+      this.importProgressTimer = setInterval(() => {
+        if (!this.importProgress || this.importProgress.status !== 'running') return
+        const nextIndex = (this.importProgress.activeIndex + 1) % this.importProgress.tracks.length
+        this.importProgress.activeIndex = nextIndex
+      }, 450)
+    },
+
+    stopImportProgressTicker() {
+      if (this.importProgressTimer) {
+        clearInterval(this.importProgressTimer)
+        this.importProgressTimer = null
+      }
+    },
+
+    updateImportTracks(tracks) {
+      if (!this.importProgress) return
+      this.importProgress.tracks = tracks.map(track => ({ ...track, status: 'pending' }))
+      this.importProgress.total = tracks.length
+      this.importProgress.processed = 0
+      this.importProgress.activeIndex = 0
+      this.startImportProgressTicker()
+    },
+
+    async fetchPreviewTracks(playlist) {
+      try {
+        const { data } = await axios.get('/api/playlists/preview', {
+          params: { path: playlist.path }
+        })
+        return data.tracks || []
+      } catch (error) {
+        return []
+      }
+    },
+
+    async revealImportMatches(matches) {
+      if (!this.importProgress) return
+      this.stopImportProgressTicker()
+      const preparedMatches = matches.map(match => ({
+        ...match,
+        status: match.matched ? 'added' : 'skipped'
+      }))
+
+      if (!preparedMatches.length) {
+        this.importProgress.processed = 0
+        this.importProgress.total = 0
+        return
+      }
+
+      this.importProgress.tracks = preparedMatches.map(match => ({ ...match, status: 'pending' }))
+      this.importProgress.total = preparedMatches.length
+      this.importProgress.processed = 0
+
+      for (let index = 0; index < preparedMatches.length; index += 1) {
+        this.importProgress.activeIndex = index
+        this.importProgress.tracks.splice(index, 1, preparedMatches[index])
+        this.importProgress.processed = index + 1
+        await this.wait(70)
+      }
+    },
+
+    markImportTracksError() {
+      if (!this.importProgress?.tracks.length) return
+      this.stopImportProgressTicker()
+      this.importProgress.tracks = this.importProgress.tracks.map(track => ({
+        ...track,
+        status: 'error'
+      }))
+    },
+
+    closeImportProgress() {
+      if (this.importProgress?.status === 'running') return
+      this.stopImportProgressTicker()
+      this.importProgress = null
+    },
+
+    wait(delay) {
+      return new Promise(resolve => setTimeout(resolve, delay))
     }
   }
 }
@@ -434,6 +659,40 @@ export default {
     transform: scale(1.05);
     opacity: 0.8;
   }
+}
+
+.import-progress-modal {
+  max-width: 720px;
+}
+
+.import-progress-summary {
+  margin-bottom: 20px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #7ab8ff);
+  transition: width 0.3s ease;
+}
+
+.progress-meta {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.import-track-item.active {
+  background: rgba(122, 184, 255, 0.15);
 }
 
 /* Responsive */
