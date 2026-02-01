@@ -2,7 +2,7 @@
   <div class="home">
     <!-- Hero Section with Icon -->
     <div class="hero-section">
-      <img src="/playlist-icon.png" alt="Playlist Icon" class="hero-icon" />
+      <img src="/playlist-icon.svg" alt="Playlist Icon" class="hero-icon" />
       <div class="stats">
         <div class="stat-item">
           <div class="stat-value">{{ playlists.length }}</div>
@@ -78,7 +78,7 @@
       </div>
       
       <div v-else-if="!filteredPlaylists.length" class="empty-state">
-        <img src="/playlist-icon.png" alt="No playlists" class="empty-state-img" />
+        <img src="/playlist-icon.svg" alt="No playlists" class="empty-state-img" />
         <p v-if="searchQuery">No playlists match "{{ searchQuery }}"</p>
         <p v-else>No playlists found. Check your settings.</p>
         <router-link to="/settings" class="btn btn-secondary" style="margin-top: 16px;">
