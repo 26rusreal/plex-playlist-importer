@@ -186,11 +186,11 @@ class SlskdService:
             '/api/v0/searches',
             json={
                 "searchText": query,
-                "filterResponses": True,
+                "filterResponses": False,
                 "maximumPeerQueueLength": 1000000,
                 "minimumPeerUploadSpeed": 0,
                 "minimumResponseFileCount": 1,
-                "responseLimit": self.settings.max_results,
+                "responseLimit": 100,
                 "timeout": timeout * 1000  # Convert to ms
             }
         )
