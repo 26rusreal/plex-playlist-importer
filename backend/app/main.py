@@ -503,15 +503,23 @@ def preview_spotify_playlist(request: SpotifyUrlRequest):
         try:
             plex = get_plex_service()
             for sp_track in playlist.tracks:
+                # Create Track object for matching
+                track_obj = Track(
+                    filename=f"{sp_track.artist} - {sp_track.title}",
+                    path="",
+                    title=sp_track.title,
+                    artist=sp_track.artist
+                )
                 # Search in Plex
-                plex_track = plex.find_track(sp_track.artist, sp_track.title)
+                match_result = plex.find_track(track_obj)
+                plex_track = match_result.plex_track if match_result.matched else None
                 tracks_info.append({
                     "title": sp_track.title,
                     "artist": sp_track.artist,
                     "album": sp_track.album,
                     "duration_ms": sp_track.duration_ms,
-                    "matched": plex_track is not None,
-                    "match_type": "exact" if plex_track else "none",
+                    "matched": match_result.matched,
+                    "match_type": match_result.match_type,
                     "plex_title": plex_track.title if plex_track else None,
                     "plex_artist": plex_track.grandparentTitle if plex_track else None
                 })
