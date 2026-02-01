@@ -105,6 +105,33 @@ body {
   box-shadow: inset 0 0 0 1px rgba(229, 160, 13, 0.25);
 }
 
+/* Icons */
+.inline-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+  color: inherit;
+  fill: currentColor;
+}
+
+.inline-icon--sm {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-spotify {
+  color: #1DB954;
+  filter: drop-shadow(0 0 6px rgba(29, 185, 84, 0.35));
+}
+
+.icon-plex {
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px rgba(229, 160, 13, 0.35));
+}
+
 /* Main content */
 .main {
   flex: 1;
@@ -571,6 +598,16 @@ body {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* Responsive */
