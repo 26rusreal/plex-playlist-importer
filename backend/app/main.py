@@ -10,7 +10,7 @@ from .config import get_settings, save_settings, load_settings
 from .m3u_parser import scan_playlists, parse_m3u, Playlist, Track
 from .plex_service import PlexService
 from . import plex_auth
-from .spotify_service import SpotifyService, is_spotify_available
+from .spotify_service import SpotifyService, is_spotify_available, is_spotify_configured, get_spotify_service
 
 app = FastAPI(title="Plex Playlist Importer", version="1.0.0")
 
@@ -437,12 +437,51 @@ class SpotifyImportRequest(BaseModel):
     overwrite: bool = False
 
 
+class SpotifyCredentials(BaseModel):
+    client_id: str
+    client_secret: str
+
+
 @app.get("/api/spotify/status")
 def spotify_status():
-    """Check if Spotify functionality is available"""
+    """Check if Spotify functionality is available and configured"""
+    available = is_spotify_available()
+    configured = is_spotify_configured() if available else False
+    
+    if not available:
+        message = "spotipy not installed"
+    elif not configured:
+        message = "Spotify credentials not configured. Add Client ID and Secret in Settings."
+    else:
+        message = "Spotify integration ready"
+    
     return {
-        "available": is_spotify_available(),
-        "message": "Spotify integration ready" if is_spotify_available() else "spotifyscraper not installed"
+        "available": available,
+        "configured": configured,
+        "message": message
+    }
+
+
+@app.post("/api/spotify/credentials")
+def save_spotify_credentials(creds: SpotifyCredentials):
+    """Save Spotify API credentials"""
+    settings = load_settings()
+    settings["spotify_client_id"] = creds.client_id
+    settings["spotify_client_secret"] = creds.client_secret
+    save_settings(settings)
+    return {"status": "ok", "message": "Spotify credentials saved"}
+
+
+@app.get("/api/spotify/credentials")
+def get_spotify_credentials():
+    """Get Spotify credentials (masked)"""
+    settings = load_settings()
+    client_id = settings.get("spotify_client_id", "")
+    client_secret = settings.get("spotify_client_secret", "")
+    return {
+        "client_id": client_id[:8] + "..." if len(client_id) > 8 else client_id,
+        "client_secret": "***" + client_secret[-4:] if len(client_secret) > 4 else "****" if client_secret else "",
+        "configured": bool(client_id and client_secret)
     }
 
 
@@ -452,8 +491,11 @@ def preview_spotify_playlist(request: SpotifyUrlRequest):
     if not is_spotify_available():
         raise HTTPException(status_code=503, detail="Spotify functionality not available")
     
+    if not is_spotify_configured():
+        raise HTTPException(status_code=400, detail="Spotify credentials not configured. Go to Settings to add Client ID and Secret.")
+    
     try:
-        spotify = SpotifyService()
+        spotify = get_spotify_service()
         playlist = spotify.get_playlist(request.url)
         
         # Try to match tracks with Plex
@@ -509,8 +551,11 @@ def import_spotify_playlist(request: SpotifyImportRequest):
     if not is_spotify_available():
         raise HTTPException(status_code=503, detail="Spotify functionality not available")
     
+    if not is_spotify_configured():
+        raise HTTPException(status_code=400, detail="Spotify credentials not configured")
+    
     try:
-        spotify = SpotifyService()
+        spotify = get_spotify_service()
         sp_playlist = spotify.get_playlist(request.url)
         
         # Convert to Playlist format for import
