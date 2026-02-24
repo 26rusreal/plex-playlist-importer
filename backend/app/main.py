@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 from .config import get_settings, save_settings, load_settings
 from .m3u_parser import scan_playlists, parse_m3u, Playlist, Track
@@ -62,6 +65,7 @@ class PlaylistInfo(BaseModel):
     path: str
     folder: str
     track_count: int
+    group: Optional[str] = None  # first folder under music root, e.g. "Artists", "Spotify Playlists"
     tracks: Optional[List[TrackInfo]] = None
 
 
@@ -89,6 +93,7 @@ def get_plex_service() -> PlexService:
         )
         success, msg = _plex_service.connect()
         if not success:
+            logger.warning("Plex connection failed: %s", msg)
             _plex_service = None
             raise HTTPException(status_code=500, detail=msg)
     
@@ -110,13 +115,16 @@ def get_current_settings():
 
 @app.post("/api/settings")
 def update_settings(settings: SettingsModel):
-    """Update settings"""
+    """Update settings (merge with existing so Spotify/SLSKD etc. are not lost)"""
+    existing = load_settings()
     data = settings.model_dump()
     # Keep existing token if not changed
     if data.get("plex_token", "").startswith("***"):
-        existing = load_settings()
         data["plex_token"] = existing.get("plex_token", "")
-    
+    # Merge: keep all keys not in SettingsModel (spotify_*, slskd_*, client_id)
+    for key in list(existing.keys()):
+        if key not in data:
+            data[key] = existing[key]
     save_settings(data)
     
     # Reset plex service cache
@@ -144,14 +152,14 @@ def test_connection(conn: ConnectionTest):
 
 
 @app.get("/api/libraries")
-def get_libraries():
+def get_libraries(service: PlexService = Depends(get_plex_service)):
     """Get available music libraries"""
     try:
-        service = get_plex_service()
         return service.get_libraries()
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Failed to get libraries")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -290,19 +298,34 @@ def list_playlists():
     playlists_path = settings.playlists_path
     
     if not os.path.exists(playlists_path):
-        raise HTTPException(status_code=404, detail=f"Playlists path not found: {playlists_path}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Path not found: {playlists_path}. Mount your music root in Docker (e.g. -v /host/music:/music) and set this to /music."
+        )
     
     playlists = scan_playlists(playlists_path)
-    
-    return [
-        PlaylistInfo(
-            name=p.name,
-            path=p.path,
-            folder=p.folder,
-            track_count=len(p.tracks)
+    root = os.path.normpath(playlists_path)
+
+    result = []
+    for p in playlists:
+        try:
+            rel = os.path.relpath(os.path.normpath(p.folder), root)
+            if not rel or rel == "." or rel == "..":
+                group = "Root"
+            else:
+                group = rel.split(os.sep)[0] if os.sep in rel else rel
+        except ValueError:
+            group = "Root"
+        result.append(
+            PlaylistInfo(
+                name=p.name,
+                path=p.path,
+                folder=p.folder,
+                track_count=len(p.tracks),
+                group=group,
+            )
         )
-        for p in playlists
-    ]
+    return result
 
 
 @app.get("/api/playlists/preview")
@@ -330,41 +353,39 @@ def preview_playlist(path: str):
             )
             tracks.append(track_info)
         
-        return PlaylistInfo(
-            name=playlist.name,
-            path=playlist.path,
-            folder=playlist.folder,
-            track_count=len(playlist.tracks),
-            tracks=tracks
-        )
+        # #region agent log
+        _resp = PlaylistInfo(name=playlist.name, path=playlist.path, folder=playlist.folder, track_count=len(playlist.tracks), tracks=tracks)
+        try:
+            _log = {"hypothesisId":"H1","location":"main.py:preview_playlist","message":"preview response","data":{"keys":list(_resp.model_dump().keys()),"tracks_len":len(tracks),"tracks_type":type(_resp.tracks).__name__},"timestamp":__import__("time").time()*1000}
+            open("/cursor-debug/debug-459f84.log", "a").write(__import__("json").dumps(_log) + "\n")
+        except Exception:
+            pass
+        return _resp
+        # #endregion
     except HTTPException:
         # Return playlist without matching if Plex not connected
-        return PlaylistInfo(
-            name=playlist.name,
-            path=playlist.path,
-            folder=playlist.folder,
-            track_count=len(playlist.tracks),
-            tracks=[
-                TrackInfo(
-                    filename=t.filename,
-                    title=t.title,
-                    artist=t.artist,
-                    matched=False,
-                    match_type="unknown"
-                )
-                for t in playlist.tracks
-            ]
-        )
+        fallback_tracks = [
+            TrackInfo(filename=t.filename, title=t.title, artist=t.artist, matched=False, match_type="unknown")
+            for t in playlist.tracks
+        ]
+        res_fallback = PlaylistInfo(name=playlist.name, path=playlist.path, folder=playlist.folder, track_count=len(playlist.tracks), tracks=fallback_tracks)
+        # #region agent log
+        try:
+            _log = {"hypothesisId":"H1","location":"main.py:preview_playlist_fallback","message":"preview fallback","data":{"tracks_len":len(fallback_tracks)},"timestamp":__import__("time").time()*1000}
+            open("/cursor-debug/debug-459f84.log", "a").write(__import__("json").dumps(_log) + "\n")
+        except Exception:
+            pass
+        return res_fallback
+        # #endregion
 
 
 @app.post("/api/playlists/import", response_model=ImportResultModel)
-def import_playlist(request: ImportRequest):
+def import_playlist(request: ImportRequest, service: PlexService = Depends(get_plex_service)):
     """Import a playlist to Plex"""
     if not os.path.exists(request.playlist_path):
         raise HTTPException(status_code=404, detail="Playlist file not found")
     
     playlist = parse_m3u(request.playlist_path)
-    service = get_plex_service()
     result = service.import_playlist(playlist, overwrite=request.overwrite)
     
     if result.error and not result.created:
@@ -380,9 +401,8 @@ def import_playlist(request: ImportRequest):
 
 
 @app.post("/api/playlists/import-batch")
-def import_batch(request: BatchImportRequest):
+def import_batch(request: BatchImportRequest, service: PlexService = Depends(get_plex_service)):
     """Import multiple playlists"""
-    service = get_plex_service()
     results = []
     
     for path in request.playlist_paths:
@@ -415,14 +435,14 @@ def import_batch(request: BatchImportRequest):
 
 
 @app.get("/api/plex-playlists")
-def get_plex_playlists():
+def get_plex_playlists(service: PlexService = Depends(get_plex_service)):
     """Get existing Plex playlists"""
     try:
-        service = get_plex_service()
         return service.get_existing_playlists()
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Failed to get Plex playlists")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -550,11 +570,15 @@ def preview_spotify_playlist(request: SpotifyUrlRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception("Error fetching Spotify playlist")
         raise HTTPException(status_code=500, detail=f"Error fetching playlist: {str(e)}")
 
 
 @app.post("/api/spotify/import")
-def import_spotify_playlist(request: SpotifyImportRequest):
+def import_spotify_playlist(
+    request: SpotifyImportRequest,
+    plex: PlexService = Depends(get_plex_service),
+):
     """Import a Spotify playlist to Plex"""
     if not is_spotify_available():
         raise HTTPException(status_code=503, detail="Spotify functionality not available")
@@ -586,7 +610,6 @@ def import_spotify_playlist(request: SpotifyImportRequest):
         )
         
         # Import to Plex
-        plex = get_plex_service()
         result = plex.import_playlist(playlist, overwrite=request.overwrite)
         
         return {
@@ -616,6 +639,7 @@ def import_spotify_playlist(request: SpotifyImportRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Spotify import failed")
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
@@ -748,6 +772,7 @@ def slskd_search(request: SlskdSearchRequest):
     except TimeoutError as e:
         raise HTTPException(status_code=408, detail=str(e))
     except Exception as e:
+        logger.exception("SLSKD search failed")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
@@ -768,6 +793,7 @@ def slskd_queue_download(request: SlskdQueueRequest):
         else:
             raise HTTPException(status_code=400, detail=result['message'])
     except Exception as e:
+        logger.exception("SLSKD queue failed")
         raise HTTPException(status_code=500, detail=f"Queue failed: {str(e)}")
 
 

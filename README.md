@@ -167,6 +167,22 @@ npm run dev
 - **Frontend**: Vue.js 3, Vite, Axios
 - **Container**: Docker, multi-stage build
 
+## Changelog
+
+### v1.2.0
+- **Import progress** – Spinning dots indicator in preview modals during import (M3U and Spotify)
+- **Status icons** – Green/red rectangular indicators instead of text badges (matched/not found, success/failed)
+- **SLSKD (Soulseek)** – Optional integration to search and download missing tracks via SLSKD daemon
+- **Recursive playlist scan** – M3U playlists discovered recursively under the music folder; grouping by folder in UI
+- **Accessibility** – ARIA labels, Escape to close modals, focus-visible styles, stable list keys
+- **Backend** – FastAPI Depends() for Plex service, structured error logging
+
+### v1.1.0
+- Progress bar and simplified status icons in preview modals
+
+### v1.0.0
+- Initial release: M3U and Spotify import, Plex OAuth, batch import
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

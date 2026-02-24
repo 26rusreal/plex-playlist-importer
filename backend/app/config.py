@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     plex_url: str = Field(default="http://localhost:32400")
     plex_token: str = Field(default="")
     music_library_name: str = Field(default="Music")
-    playlists_path: str = Field(default="/playlists")
+    playlists_path: str = Field(default="/music")
     # Spotify settings
     spotify_client_id: str = Field(default="")
     spotify_client_secret: str = Field(default="")

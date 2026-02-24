@@ -8,8 +8,14 @@ services:
     volumes:
       # Config persistence
       - ./config:/config
-      # Mount your playlists folder (adjust this path!)
-      - /mnt/data/media/music/Spotify Playlists:/playlists:ro
+      # Debug log (host .cursor for agent log file)
+      - ../.cursor:/cursor-debug
+      # Mount the full music root so that Artists/, playlists, etc. are under /music
+      # Example: on server if music is at /mnt/tower/mediadata/media/music then:
+      #   - /mnt/tower/mediadata/media/music:/music:ro
+      # Playlists like .../music/Artists/Armin van Buuren/Armin van Buuren.m3u8
+      # will appear as /music/Artists/Armin van Buuren/Armin van Buuren.m3u8 in container
+      - /mnt/data/media/music:/music:ro
     environment:
       - TZ=Europe/Moscow
       - SPOTIFY_SCRAPER_URL=http://host.docker.internal:3020

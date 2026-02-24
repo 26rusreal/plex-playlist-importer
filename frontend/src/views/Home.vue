@@ -1,18 +1,18 @@
 <template>
   <div class="home">
     <!-- Hero Section with Icon -->
-    <div class="hero-section">
-      <img src="/playlist-icon.png" alt="Playlist Icon" class="hero-icon" />
+    <div class="hero-section hero-reveal">
+      <img src="/playlist-icon.svg" alt="Playlist Icon" class="hero-icon" />
       <div class="stats">
-        <div class="stat-item">
+        <div class="stat-item stat-reveal" style="animation-delay: 0.1s">
           <div class="stat-value">{{ playlists.length }}</div>
           <div class="stat-label">Playlists Found</div>
         </div>
-        <div class="stat-item">
+        <div class="stat-item stat-reveal" style="animation-delay: 0.18s">
           <div class="stat-value">{{ totalTracks }}</div>
           <div class="stat-label">Total Tracks</div>
         </div>
-        <div class="stat-item">
+        <div class="stat-item stat-reveal" style="animation-delay: 0.26s">
           <div class="stat-value">{{ selectedPlaylists.length }}</div>
           <div class="stat-label">Selected</div>
         </div>
@@ -89,84 +89,125 @@
         {{ successMessage }}
       </div>
       
-      <!-- Search -->
-      <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          class="form-input" 
-          placeholder="Search playlists..."
-          style="padding-left: 44px;"
-        >
+      <!-- Toolbar: search + view -->
+      <div class="playlist-toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            class="form-input" 
+            placeholder="Search playlists..."
+            style="padding-left: 44px;"
+          >
+        </div>
+        <div class="toolbar-options">
+          <label class="checkbox">
+            <input type="checkbox" v-model="overwrite">
+            <span>Overwrite existing</span>
+          </label>
+          <button 
+            type="button" 
+            class="btn btn-sm btn-secondary" 
+            aria-label="Expand all groups"
+            @click="expandAllGroups(true)"
+          >
+            Expand all
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-sm btn-secondary" 
+            aria-label="Collapse all groups"
+            @click="expandAllGroups(false)"
+          >
+            Collapse all
+          </button>
+        </div>
       </div>
       
-      <!-- Select All -->
-      <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 16px;">
+      <!-- Select All (above groups) -->
+      <div class="select-all-row">
         <label class="checkbox">
           <input type="checkbox" v-model="selectAll" @change="toggleSelectAll">
-          <span>Select All</span>
-        </label>
-        <label class="checkbox">
-          <input type="checkbox" v-model="overwrite">
-          <span>Overwrite existing playlists</span>
+          <span>Select all visible</span>
         </label>
       </div>
       
-      <!-- Playlist List -->
+      <!-- Playlist List by Group -->
       <div v-if="loading" class="empty-state">
         <div class="spinner" style="width: 40px; height: 40px; margin: 0 auto;"></div>
-        <p style="margin-top: 16px;">Loading playlists...</p>
+        <p style="margin-top: 16px;">Scanning music folder recursively...</p>
       </div>
       
       <div v-else-if="!filteredPlaylists.length" class="empty-state">
-        <img src="/playlist-icon.png" alt="No playlists" class="empty-state-img" />
+        <img src="/playlist-icon.svg" alt="No playlists" class="empty-state-img" />
         <p v-if="searchQuery">No playlists match "{{ searchQuery }}"</p>
-        <p v-else>No playlists found. Check your settings.</p>
+        <p v-else>No playlists found. Mount music root in Settings.</p>
         <router-link to="/settings" class="btn btn-secondary" style="margin-top: 16px;">
-          Go to Settings
+          Settings
         </router-link>
       </div>
       
-      <div v-else class="playlist-list">
+      <div v-else class="playlist-groups">
         <div 
-          v-for="playlist in filteredPlaylists" 
-          :key="playlist.path"
-          class="playlist-item"
-          :class="{ selected: isSelected(playlist) }"
-          @click="toggleSelect(playlist)"
+          v-for="(items, groupName) in playlistsByGroup" 
+          :key="groupName"
+          class="playlist-group"
         >
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <input 
-              type="checkbox" 
-              :checked="isSelected(playlist)"
-              @click.stop
-              @change="toggleSelect(playlist)"
-              style="width: 18px; height: 18px; accent-color: var(--accent);"
+          <button 
+            type="button"
+            class="group-header"
+            :class="{ expanded: expandedGroups[groupName] }"
+            :aria-expanded="expandedGroups[groupName]"
+            :aria-label="`Toggle ${groupName}, ${items.length} playlists`"
+            @click="toggleGroup(groupName)"
+          >
+            <span class="group-arrow" aria-hidden="true">{{ expandedGroups[groupName] ? '▼' : '▶' }}</span>
+            <span class="group-name">{{ groupName }}</span>
+            <span class="group-count">{{ items.length }} playlists</span>
+          </button>
+          <div v-show="expandedGroups[groupName]" class="group-content">
+            <div 
+              v-for="playlist in items" 
+              :key="playlist.path"
+              class="playlist-item"
+              :class="{ selected: isSelected(playlist) }"
+              @click="toggleSelect(playlist)"
             >
-            <div class="playlist-info">
-              <div class="playlist-name">{{ playlist.name }}</div>
-              <div class="playlist-meta">{{ playlist.track_count }} tracks</div>
+              <div class="playlist-item-inner">
+                <input 
+                  type="checkbox" 
+                  :checked="isSelected(playlist)"
+                  :aria-label="`Select playlist ${playlist.name}`"
+                  @click.stop
+                  @change="toggleSelect(playlist)"
+                  class="playlist-checkbox"
+                >
+                <div class="playlist-info">
+                  <div class="playlist-name">{{ playlist.name }}</div>
+                  <div class="playlist-meta">{{ playlist.track_count }} tracks</div>
+                </div>
+              </div>
+              <div class="playlist-actions" @click.stop>
+                <button class="btn btn-sm btn-secondary" @click="previewPlaylist(playlist)">
+                  Preview
+                </button>
+                <button class="btn btn-sm btn-primary" @click="importSingle(playlist)">
+                  Import
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="playlist-actions" @click.stop>
-            <button class="btn btn-sm btn-secondary" @click="previewPlaylist(playlist)">
-              Preview
-            </button>
-            <button class="btn btn-sm btn-primary" @click="importSingle(playlist)">
-              Import
-            </button>
           </div>
         </div>
       </div>
     </div>
     
     <!-- Preview Modal -->
-    <div v-if="previewModal" class="modal-overlay" @click.self="previewModal = null">
+    <div v-if="previewModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title" @click.self="previewModal = null">
       <div class="modal">
         <div class="modal-header">
-          <h3 class="modal-title">{{ previewModal.name }}</h3>
-          <button class="modal-close" @click="previewModal = null">&times;</button>
+          <h3 id="preview-modal-title" class="modal-title">{{ previewModal.name }}</h3>
+          <button type="button" class="modal-close" aria-label="Close" @click="previewModal = null">&times;</button>
         </div>
         <div class="modal-body">
           <div v-if="previewLoading" class="empty-state">
@@ -175,21 +216,23 @@
           </div>
           
           <div v-else>
+            <div v-if="!(previewModal.tracks && previewModal.tracks.length)" class="empty-state" style="margin: 16px 0;">
+              <p>No track data received (tracks: {{ previewModal.tracks == null ? 'null' : (previewModal.tracks && previewModal.tracks.length) || 0 }})</p>
+            </div>
+            <template v-else>
             <!-- Match stats -->
-            <div style="display: flex; gap: 16px; margin-bottom: 20px;">
-              <span class="badge badge-success">
-                {{ matchedCount }} matched
-              </span>
-              <span class="badge badge-error">
-                {{ unmatchedCount }} not found
-              </span>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+              <span class="status-icon status-icon--success" aria-label="Matched"></span>
+              <span>{{ matchedCount }}</span>
+              <span class="status-icon status-icon--error" aria-label="Not found"></span>
+              <span>{{ unmatchedCount }}</span>
             </div>
             
             <!-- Track list -->
             <div class="track-list">
               <div 
-                v-for="(track, index) in previewModal.tracks" 
-                :key="index"
+                v-for="(track, index) in (previewModal.tracks || [])" 
+                :key="track.filename || index"
                 class="track-item"
               >
                 <div class="track-info">
@@ -204,11 +247,9 @@
                   </div>
                 </div>
                 <div class="track-status">
-                  <span v-if="track.matched" class="badge badge-success">
-                    {{ track.match_type }}
-                  </span>
+                  <span v-if="track.matched" class="status-icon status-icon--success" aria-label="Matched"></span>
                   <template v-else>
-                    <span class="badge badge-error">not found</span>
+                    <span class="status-icon status-icon--error" aria-label="Not found"></span>
                     <button 
                       v-if="slskdEnabled" 
                       class="btn btn-xs btn-slskd" 
@@ -222,28 +263,38 @@
                 </div>
               </div>
             </div>
+            </template>
+          </div>
+        </div>
+        <div v-if="importingFromPreview" class="spinner-dots-wrap" aria-hidden="true">
+          <div class="spinner-dots spinner-dots--spin">
+            <span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="previewModal = null">Close</button>
-          <button class="btn btn-primary" @click="importFromPreview">
-            Import Playlist
+          <button class="btn btn-secondary" @click="previewModal = null" :disabled="importingFromPreview">Close</button>
+          <button class="btn btn-primary" @click="importFromPreview" :disabled="importingFromPreview">
+            <span v-if="importingFromPreview" class="spinner" style="width: 16px; height: 16px; margin-right: 8px;"></span>
+            {{ importingFromPreview ? 'Importing…' : 'Import Playlist' }}
           </button>
+        </div>
+        <div v-if="previewImportError" class="alert alert-error" style="margin: 0 24px 16px;">
+          {{ previewImportError }}
         </div>
       </div>
     </div>
     
     <!-- Spotify Preview Modal -->
-    <div v-if="spotifyPreview" class="modal-overlay" @click.self="spotifyPreview = null">
+    <div v-if="spotifyPreview" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="spotify-modal-title" @click.self="spotifyPreview = null">
       <div class="modal">
         <div class="modal-header">
-          <h3 class="modal-title">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;">
+          <h3 id="spotify-modal-title" class="modal-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="#1DB954" style="vertical-align: middle; margin-right: 8px;" aria-hidden="true">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
             </svg>
             {{ spotifyPreview.name }}
           </h3>
-          <button class="modal-close" @click="spotifyPreview = null">&times;</button>
+          <button type="button" class="modal-close" aria-label="Close" @click="spotifyPreview = null">&times;</button>
         </div>
         <div class="modal-body">
           <div class="spotify-preview-header">
@@ -255,20 +306,18 @@
           </div>
           
           <!-- Match stats -->
-          <div style="display: flex; gap: 16px; margin: 16px 0;">
-            <span class="badge badge-success">
-              {{ spotifyMatchedCount }} matched
-            </span>
-            <span class="badge badge-error">
-              {{ spotifyUnmatchedCount }} not found
-            </span>
+          <div style="display: flex; align-items: center; gap: 16px; margin: 16px 0;">
+            <span class="status-icon status-icon--success" aria-label="Matched"></span>
+            <span>{{ spotifyMatchedCount }}</span>
+            <span class="status-icon status-icon--error" aria-label="Not found"></span>
+            <span>{{ spotifyUnmatchedCount }}</span>
           </div>
           
           <!-- Track list -->
           <div class="track-list">
             <div 
               v-for="(track, index) in spotifyPreview.tracks" 
-              :key="index"
+              :key="track.id || `${track.artist}-${track.title}-${index}`"
               class="track-item"
             >
               <div class="track-info">
@@ -279,24 +328,28 @@
                 </div>
               </div>
               <div class="track-status">
-                <span v-if="track.matched" class="badge badge-success">
-                  {{ track.match_type }}
-                </span>
+                <span v-if="track.matched" class="status-icon status-icon--success" aria-label="Matched"></span>
                 <template v-else>
-                  <span class="badge badge-error">not found</span>
+                  <span class="status-icon status-icon--error" aria-label="Not found"></span>
                   <button 
                     v-if="slskdEnabled" 
                     class="btn btn-xs btn-slskd" 
                     @click="searchSlskd(track)"
                     :disabled="track.slskdSearching"
                     title="Search in Soulseek"
+                    aria-label="Search in Soulseek"
                   >
                     <span v-if="track.slskdSearching" class="spinner-xs"></span>
-                    <span v-else>🎵</span>
+                    <span v-else aria-hidden="true">🎵</span>
                   </button>
                 </template>
               </div>
             </div>
+          </div>
+        </div>
+        <div v-if="spotifyImporting" class="spinner-dots-wrap" aria-hidden="true">
+          <div class="spinner-dots spinner-dots--spin">
+            <span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span><span class="spinner-dot"></span>
           </div>
         </div>
         <div class="modal-footer">
@@ -304,28 +357,31 @@
             <input type="checkbox" v-model="spotifyOverwrite">
             <span>Overwrite if exists</span>
           </label>
-          <button class="btn btn-secondary" @click="spotifyPreview = null">Cancel</button>
+          <button class="btn btn-secondary" @click="spotifyPreview = null" :disabled="spotifyImporting">Cancel</button>
           <button class="btn btn-primary" @click="importSpotify" :disabled="spotifyImporting">
-            <span v-if="spotifyImporting" class="spinner"></span>
-            Import to Plex
+            <span v-if="spotifyImporting" class="spinner" style="width: 16px; height: 16px; margin-right: 8px;"></span>
+            {{ spotifyImporting ? 'Importing…' : 'Import to Plex' }}
           </button>
+        </div>
+        <div v-if="spotifyImportError" class="alert alert-error" style="margin: 0 24px 16px;">
+          {{ spotifyImportError }}
         </div>
       </div>
     </div>
     
     <!-- Import Results Modal -->
-    <div v-if="importResults" class="modal-overlay" @click.self="importResults = null">
+    <div v-if="importResults" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="import-results-title" @click.self="importResults = null">
       <div class="modal">
         <div class="modal-header">
-          <h3 class="modal-title">Import Results</h3>
-          <button class="modal-close" @click="importResults = null">&times;</button>
+          <h3 id="import-results-title" class="modal-title">Import Results</h3>
+          <button type="button" class="modal-close" aria-label="Close" @click="importResults = null">&times;</button>
         </div>
         <div class="modal-body">
-          <div style="margin-bottom: 20px;">
-            <span class="badge badge-success">{{ importResults.successful }} successful</span>
-            <span class="badge badge-error" style="margin-left: 8px;">
-              {{ importResults.total - importResults.successful }} failed
-            </span>
+          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+            <span class="status-icon status-icon--success" aria-label="Successful"></span>
+            <span>{{ importResults.successful }}</span>
+            <span class="status-icon status-icon--error" aria-label="Failed"></span>
+            <span>{{ importResults.total - importResults.successful }}</span>
           </div>
           
           <div class="track-list">
@@ -341,8 +397,8 @@
                 </div>
               </div>
               <div class="track-status">
-                <span v-if="result.created" class="badge badge-success">created</span>
-                <span v-else class="badge badge-error" :title="result.error">failed</span>
+                <span v-if="result.created" class="status-icon status-icon--success" aria-label="Created"></span>
+                <span v-else class="status-icon status-icon--error" :title="result.error" aria-label="Failed"></span>
               </div>
             </div>
           </div>
@@ -354,13 +410,13 @@
     </div>
     
     <!-- SLSKD Search Modal -->
-    <div v-if="slskdModal" class="modal-overlay" @click.self="slskdModal = null">
+    <div v-if="slskdModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="slskd-modal-title" @click.self="slskdModal = null">
       <div class="modal">
         <div class="modal-header">
-          <h3 class="modal-title">
-            🎵 Soulseek Search
+          <h3 id="slskd-modal-title" class="modal-title">
+            <span aria-hidden="true">🎵</span> Soulseek Search
           </h3>
-          <button class="modal-close" @click="slskdModal = null">&times;</button>
+          <button type="button" class="modal-close" aria-label="Close" @click="slskdModal = null">&times;</button>
         </div>
         <div class="modal-body">
           <div class="slskd-search-info">
@@ -384,7 +440,7 @@
             <div class="slskd-results">
               <div 
                 v-for="(file, index) in slskdModal.results.slice(0, 20)" 
-                :key="index"
+                :key="`${file.filename}-${file.username}-${file.size || index}`"
                 class="slskd-file"
                 :class="{ selected: slskdModal.selectedFile === index }"
                 @click="slskdModal.selectedFile = index"
@@ -441,6 +497,8 @@ export default {
       overwrite: false,
       previewModal: null,
       previewLoading: false,
+      importingFromPreview: false,
+      previewImportError: '',
       importResults: null,
       // Spotify
       spotifyUrl: '',
@@ -450,22 +508,40 @@ export default {
       spotifyPreview: null,
       spotifyOverwrite: false,
       spotifyImporting: false,
+      spotifyImportError: '',
       spotifyConfigured: true, // assume configured until check
       // SLSKD
       slskdEnabled: false,
-      slskdModal: null
+      slskdModal: null,
+      // Groups (folder names) expanded state
+      expandedGroups: {}
     }
   },
   computed: {
     filteredPlaylists() {
-      if (!this.searchQuery) return this.playlists
+      const list = this.playlists || []
+      if (!this.searchQuery) return list
       const query = this.searchQuery.toLowerCase()
-      return this.playlists.filter(p => 
-        p.name.toLowerCase().includes(query)
+      return list.filter(p =>
+        (p && p.name && p.name.toLowerCase().includes(query)) ||
+        (p && p.group && p.group.toLowerCase().includes(query))
       )
     },
+    playlistsByGroup() {
+      const list = this.filteredPlaylists || []
+      const map = {}
+      for (const p of list) {
+        const g = p.group || 'Root'
+        if (!map[g]) map[g] = []
+        map[g].push(p)
+      }
+      const sorted = {}
+      const keys = Object.keys(map).sort((a, b) => a.localeCompare(b))
+      keys.forEach(k => { sorted[k] = map[k] })
+      return sorted
+    },
     totalTracks() {
-      return this.playlists.reduce((sum, p) => sum + p.track_count, 0)
+      return (this.playlists || []).reduce((sum, p) => sum + (p && p.track_count || 0), 0)
     },
     matchedCount() {
       if (!this.previewModal?.tracks) return 0
@@ -488,8 +564,19 @@ export default {
     this.loadPlaylists()
     this.checkSpotifyStatus()
     this.checkSlskdStatus()
+    window.addEventListener('keydown', this.onEscapeKey)
+  },
+  beforeUnmount() {
+    window.removeEventListener('keydown', this.onEscapeKey)
   },
   methods: {
+    onEscapeKey(e) {
+      if (e.key !== 'Escape') return
+      if (this.slskdModal) { this.slskdModal = null; e.preventDefault(); return }
+      if (this.importResults) { this.importResults = null; e.preventDefault(); return }
+      if (this.spotifyPreview) { this.spotifyPreview = null; e.preventDefault(); return }
+      if (this.previewModal) { this.previewModal = null; e.preventDefault() }
+    },
     async checkSpotifyStatus() {
       try {
         const { data } = await axios.get('/api/spotify/status')
@@ -506,12 +593,32 @@ export default {
       
       try {
         const { data } = await axios.get('/api/playlists')
-        this.playlists = data
+        this.playlists = Array.isArray(data) ? data : []
+        const groups = {}
+        const seen = new Set()
+        for (const p of this.playlists) {
+          const g = p.group || 'Root'
+          if (!seen.has(g)) {
+            seen.add(g)
+            groups[g] = true
+          }
+        }
+        this.expandedGroups = { ...this.expandedGroups, ...groups }
       } catch (error) {
         this.error = error.response?.data?.detail || 'Failed to load playlists'
       }
       
       this.loading = false
+    },
+    toggleGroup(groupName) {
+      this.expandedGroups = { ...this.expandedGroups, [groupName]: !this.expandedGroups[groupName] }
+    },
+    expandAllGroups(open) {
+      const next = {}
+      for (const g of Object.keys(this.playlistsByGroup)) {
+        next[g] = open
+      }
+      this.expandedGroups = { ...this.expandedGroups, ...next }
     },
     
     isSelected(playlist) {
@@ -539,41 +646,61 @@ export default {
     async previewPlaylist(playlist) {
       this.previewModal = { ...playlist, tracks: [] }
       this.previewLoading = true
-      
+      // #region agent log
+      fetch('http://localhost:1558/ingest/267a81b1-3061-4444-83dc-5d64e46c6e08',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'459f84'},body:JSON.stringify({sessionId:'459f84',hypothesisId:'H1',location:'Home.vue:previewPlaylist',message:'preview requested',data:{path:playlist.path},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       try {
         const { data } = await axios.get('/api/playlists/preview', {
           params: { path: playlist.path }
         })
+        // #region agent log
+        const _logData = { keys: Object.keys(data || {}), hasTracks: !!(data && data.tracks), tracksIsArray: Array.isArray(data && data.tracks), tracksLen: (data && data.tracks) ? data.tracks.length : 0 }
+        fetch('http://localhost:1558/ingest/267a81b1-3061-4444-83dc-5d64e46c6e08',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'459f84'},body:JSON.stringify({sessionId:'459f84',hypothesisId:'H1',location:'Home.vue:previewPlaylist:afterGet',message:'preview response',data:_logData,timestamp:Date.now()})}).catch(()=>{});
+        try { console.error('[preview debug]', _logData) } catch (_) {}
+        // #endregion
         this.previewModal = data
       } catch (error) {
+        try { console.error('[preview error]', error) } catch (_) {}
         this.previewModal.error = error.response?.data?.detail || 'Failed to load preview'
+        // #region agent log
+        fetch('http://localhost:1558/ingest/267a81b1-3061-4444-83dc-5d64e46c6e08',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'459f84'},body:JSON.stringify({sessionId:'459f84',hypothesisId:'H2',location:'Home.vue:previewPlaylist:catch',message:'preview error',data:{detail:error.response&&error.response.data&&error.response.data.detail},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       }
-      
       this.previewLoading = false
     },
     
-    async importSingle(playlist) {
-      this.importing = true
-      this.error = ''
-      this.successMessage = ''
-      
+    async importSingle(playlist, fromPreview = false) {
+      const flag = fromPreview ? 'importingFromPreview' : 'importing'
+      this[flag] = true
+      if (!fromPreview) {
+        this.error = ''
+        this.successMessage = ''
+      } else {
+        this.previewImportError = ''
+      }
       try {
         const { data } = await axios.post('/api/playlists/import', {
           playlist_path: playlist.path,
           overwrite: this.overwrite
         })
         this.successMessage = `Created "${data.playlist_name}" with ${data.matched_tracks}/${data.total_tracks} tracks`
+        if (fromPreview) return { success: true }
       } catch (error) {
-        this.error = error.response?.data?.detail || 'Import failed'
+        const msg = error.response?.data?.detail || 'Import failed'
+        if (fromPreview) this.previewImportError = msg
+        else this.error = msg
+        if (fromPreview) return { success: false }
+      } finally {
+        this[flag] = false
       }
-      
-      this.importing = false
     },
     
     async importFromPreview() {
       if (!this.previewModal) return
-      await this.importSingle(this.previewModal)
-      this.previewModal = null
+      this.importingFromPreview = true
+      this.previewImportError = ''
+      const result = await this.importSingle(this.previewModal, true)
+      if (result && result.success) this.previewModal = null
     },
     
     async importSelected() {
@@ -623,6 +750,7 @@ export default {
       if (!this.spotifyPreview) return
       
       this.spotifyImporting = true
+      this.spotifyImportError = ''
       
       try {
         const { data } = await axios.post('/api/spotify/import', {
@@ -634,12 +762,11 @@ export default {
         this.spotifyUrl = ''
         this.spotifySuccess = `Created "${data.playlist_name}" with ${data.matched_tracks}/${data.total_tracks} tracks`
         
-        // Clear success message after 5 seconds
-        setTimeout(() => {
-          this.spotifySuccess = ''
-        }, 5000)
+        setTimeout(() => { this.spotifySuccess = '' }, 5000)
       } catch (error) {
-        this.spotifyError = error.response?.data?.detail || 'Import failed'
+        const msg = error.response?.data?.detail || 'Import failed'
+        this.spotifyImportError = msg
+        this.spotifyError = msg
       }
       
       this.spotifyImporting = false
@@ -736,6 +863,37 @@ export default {
 
 <style scoped>
 /* Hero Section */
+.hero-reveal {
+  animation: heroReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.stat-reveal {
+  opacity: 0;
+  animation: statReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes heroReveal {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes statReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .hero-section {
   display: flex;
   align-items: center;
@@ -865,6 +1023,143 @@ export default {
   text-decoration: underline;
 }
 
+/* Playlist toolbar & groups */
+.playlist-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.playlist-toolbar .search-box {
+  flex: 1;
+  min-width: 200px;
+}
+
+.toolbar-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.select-all-row {
+  margin-bottom: 12px;
+}
+
+.playlist-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.playlist-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-hover);
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.group-header:hover {
+  background: var(--bg-tertiary, rgba(255,255,255,0.06));
+}
+
+.group-header .group-arrow {
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 20px;
+}
+
+.group-header .group-name {
+  flex: 1;
+}
+
+.group-header .group-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.group-content {
+  padding: 4px 0;
+}
+
+.playlist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid var(--border);
+}
+
+.playlist-item:last-child {
+  border-bottom: none;
+}
+
+.playlist-item:hover {
+  background: var(--bg-hover);
+}
+
+.playlist-item.selected {
+  background: rgba(229, 160, 13, 0.12);
+}
+
+.playlist-item-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.playlist-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.playlist-info {
+  min-width: 0;
+}
+
+.playlist-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .hero-section {
@@ -891,6 +1186,22 @@ export default {
     flex-direction: column;
     align-items: center;
     text-align: center;
+  }
+
+  .playlist-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .playlist-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .playlist-actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-left: 46px;
   }
 }
 

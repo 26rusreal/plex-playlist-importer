@@ -77,8 +77,9 @@
       
       <!-- Manual URL input -->
       <div class="form-group" style="margin-top: 16px;">
-        <label class="form-label">Server URL (or enter manually)</label>
+        <label class="form-label" for="settings-plex-url">Server URL (or enter manually)</label>
         <input 
+          id="settings-plex-url"
           v-model="settings.plex_url" 
           type="text" 
           class="form-input"
@@ -111,12 +112,12 @@
         </div>
         
         <div class="form-group">
-          <label class="form-label">Playlists Folder (inside container)</label>
+          <label class="form-label">Music folder (scan for .m3u playlists recursively)</label>
           <input 
             v-model="settings.playlists_path" 
             type="text" 
             class="form-input"
-            placeholder="/playlists"
+            placeholder="/music"
           >
         </div>
         
@@ -351,7 +352,7 @@ export default {
         plex_url: '',
         plex_token: '',
         music_library_name: 'Music',
-        playlists_path: '/playlists'
+        playlists_path: '/music'
       },
       manualToken: '',
       libraries: [],

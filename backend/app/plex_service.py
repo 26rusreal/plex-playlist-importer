@@ -4,9 +4,17 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import os
 import re
+import requests
 from difflib import SequenceMatcher
 
+# Plex .plex.direct often has hostname mismatch on local IP changes
+requests.packages.urllib3.disable_warnings(
+    requests.packages.urllib3.exceptions.InsecureRequestWarning
+)
+
 from .m3u_parser import Playlist, Track
+
+logger = __import__("logging").getLogger(__name__)
 
 
 @dataclass
@@ -38,11 +46,20 @@ class PlexService:
     def connect(self) -> Tuple[bool, str]:
         """Connect to Plex server"""
         try:
-            self._server = PlexServer(self.url, self.token, timeout=30)
+            session = requests.Session()
+            session.verify = False
+            # Ensure session is used for all requests (no default verify)
+            adapter = requests.adapters.HTTPAdapter()
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+            self._server = PlexServer(
+                self.url, self.token, timeout=30, session=session
+            )
             return True, f"Connected to {self._server.friendlyName}"
         except Unauthorized:
             return False, "Invalid Plex token"
         except Exception as e:
+            logger.exception("Plex connection failed")
             return False, f"Connection failed: {str(e)}"
     
     def get_library(self):
@@ -177,7 +194,7 @@ class PlexService:
                                 match_type="title"
                             )
         except Exception as e:
-            print(f"Search error for '{title}': {e}")
+            logger.warning("Search error for %r: %s", title, e)
         
         # Strategy 2: Search by artist if title search failed
         if artist:

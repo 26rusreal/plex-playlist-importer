@@ -105,18 +105,24 @@ def parse_m3u(m3u_path: str) -> Playlist:
 
 
 def scan_playlists(root_path: str) -> List[Playlist]:
-    """Scan directory recursively for m3u playlists"""
+    """Scan directory recursively for .m3u and .m3u8 playlists.
+    Includes playlists even with 0 tracks so they are visible (e.g. m3u8 with URLs).
+    """
     playlists = []
-    
+    seen_paths = set()
+
     for root, dirs, files in os.walk(root_path):
         for file in files:
             if file.lower().endswith('.m3u') or file.lower().endswith('.m3u8'):
                 m3u_path = os.path.join(root, file)
                 try:
+                    m3u_path_norm = os.path.normpath(m3u_path)
+                    if m3u_path_norm in seen_paths:
+                        continue
+                    seen_paths.add(m3u_path_norm)
                     playlist = parse_m3u(m3u_path)
-                    if playlist.tracks:  # Only add if has tracks
-                        playlists.append(playlist)
+                    playlists.append(playlist)
                 except Exception as e:
                     print(f"Error parsing {m3u_path}: {e}")
-    
+
     return playlists
